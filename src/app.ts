@@ -21,6 +21,13 @@ export function createApp(opts: AppOptions) {
 	app.route("/", operationalRoutes(opts.registry));
 	app.route("/v1/workspaces", workspaceRoutes(opts.registry));
 
+	app.openAPIRegistry.registerComponent("securitySchemes", "BearerAuth", {
+		type: "http",
+		scheme: "bearer",
+		description:
+			"Per-workspace bearer token, matching one of the tokens declared under the workspace's auth.tokens in workbench.yaml.",
+	});
+
 	app.doc31("/v1/openapi.json", {
 		openapi: "3.1.0",
 		info: {

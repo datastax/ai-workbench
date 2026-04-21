@@ -163,7 +163,9 @@ describe("workspace routes", () => {
 	});
 
 	test("redacts astra token", async () => {
-		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod");
+		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod", {
+			headers: { Authorization: "Bearer wb-tok" },
+		});
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body.data.astra.token).toBe("****");
@@ -173,7 +175,9 @@ describe("workspace routes", () => {
 	});
 
 	test("redacts bearer auth tokens", async () => {
-		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod");
+		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod", {
+			headers: { Authorization: "Bearer wb-tok" },
+		});
 		const body = await json(res);
 		expect(body.data.auth.tokens).toEqual(["****"]);
 	});
@@ -185,6 +189,98 @@ describe("error handling", () => {
 		expect(res.status).toBe(404);
 		const body = await json(res);
 		expect(body.error.code).toBe("not_found");
+	});
+});
+
+describe("per-workspace auth", () => {
+	function bearerConfig() {
+		return ConfigSchema.parse({
+			version: 1,
+			workspaces: [
+				{
+					id: "secured",
+					driver: "mock",
+					auth: { kind: "bearer", tokens: ["right-token", "alt-token"] },
+					vectorStores: [{ id: "v1", collection: "c", dimensions: 128 }],
+					catalogs: [{ id: "cat1", vectorStore: "v1" }],
+				},
+				{
+					id: "open",
+					driver: "mock",
+					auth: { kind: "none" },
+					vectorStores: [],
+					catalogs: [],
+				},
+			],
+		});
+	}
+
+	test("workspace with kind:none requires no auth", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/open");
+		expect(res.status).toBe(200);
+	});
+
+	test("bearer workspace returns 401 with no Authorization header", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/secured");
+		expect(res.status).toBe(401);
+		const body = await json(res);
+		expect(body.error.code).toBe("missing_authorization");
+	});
+
+	test("bearer workspace returns 401 for malformed header", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/secured", {
+			headers: { Authorization: "Basic abc" },
+		});
+		expect(res.status).toBe(401);
+		const body = await json(res);
+		expect(body.error.code).toBe("invalid_authorization");
+	});
+
+	test("bearer workspace returns 403 for wrong token", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/secured", {
+			headers: { Authorization: "Bearer wrong-token" },
+		});
+		expect(res.status).toBe(403);
+		const body = await json(res);
+		expect(body.error.code).toBe("invalid_token");
+	});
+
+	test("bearer workspace accepts a valid token", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/secured", {
+			headers: { Authorization: "Bearer right-token" },
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.data.id).toBe("secured");
+	});
+
+	test("bearer workspace accepts any configured token", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/secured", {
+			headers: { Authorization: "Bearer alt-token" },
+		});
+		expect(res.status).toBe(200);
+	});
+
+	test("404 for unknown workspace is returned before auth check", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces/does-not-exist");
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("list endpoint remains public even when workspaces have auth", async () => {
+		const app = makeApp(bearerConfig());
+		const res = await app.request("/v1/workspaces");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.data).toHaveLength(2);
 	});
 });
 
@@ -213,6 +309,23 @@ describe("openapi", () => {
 		const res = await makeApp().request("/v1/openapi.json");
 		const body = await json(res);
 		expect(body.components.schemas.ErrorEnvelope).toBeDefined();
+	});
+
+	test("openapi document declares BearerAuth security scheme", async () => {
+		const res = await makeApp().request("/v1/openapi.json");
+		const body = await json(res);
+		expect(body.components.securitySchemes.BearerAuth).toMatchObject({
+			type: "http",
+			scheme: "bearer",
+		});
+	});
+
+	test("workspace detail route advertises 401 and 403 responses", async () => {
+		const res = await makeApp().request("/v1/openapi.json");
+		const body = await json(res);
+		const detail = body.paths["/v1/workspaces/{workspaceId}"].get;
+		expect(detail.responses["401"]).toBeDefined();
+		expect(detail.responses["403"]).toBeDefined();
 	});
 
 	test("GET /docs serves the Scalar reference UI", async () => {

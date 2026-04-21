@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { checkWorkspaceAuth } from "../lib/auth.js";
 import { errorEnvelope } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AppEnv } from "../lib/types.js";
@@ -45,7 +46,8 @@ export function workspaceRoutes(registry: WorkspaceRegistry) {
 		tags: ["workspaces"],
 		summary: "Get workspace details",
 		description:
-			"Returns the resolved (redacted) configuration of a single workspace.",
+			"Returns the resolved (redacted) configuration of a single workspace. Enforces the workspace's declared auth.",
+		security: [{ BearerAuth: [] }],
 		request: {
 			params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 		},
@@ -53,6 +55,14 @@ export function workspaceRoutes(registry: WorkspaceRegistry) {
 			200: {
 				content: { "application/json": { schema: WorkspaceDetailSchema } },
 				description: "Workspace detail with secrets redacted",
+			},
+			401: {
+				content: { "application/json": { schema: ErrorEnvelopeSchema } },
+				description: "Missing or malformed Authorization header",
+			},
+			403: {
+				content: { "application/json": { schema: ErrorEnvelopeSchema } },
+				description: "Token not authorized for this workspace",
 			},
 			404: {
 				content: { "application/json": { schema: ErrorEnvelopeSchema } },
@@ -72,6 +82,10 @@ export function workspaceRoutes(registry: WorkspaceRegistry) {
 				),
 				404,
 			);
+		}
+		const auth = checkWorkspaceAuth(c, ws);
+		if (!auth.ok) {
+			return c.json(errorEnvelope(c, auth.code, auth.message), auth.status);
 		}
 		return c.json({ data: redact(ws.config) as Record<string, unknown> }, 200);
 	});
