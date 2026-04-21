@@ -1,9 +1,11 @@
-import { Hono } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
+import { Scalar } from "@scalar/hono-api-reference";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
 import { operationalRoutes } from "./routes/operational.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
+import { VERSION } from "./version.js";
 import type { WorkspaceRegistry } from "./workspaces/registry.js";
 
 export interface AppOptions {
@@ -12,12 +14,33 @@ export interface AppOptions {
 }
 
 export function createApp(opts: AppOptions) {
-	const app = new Hono<AppEnv>();
+	const app = new OpenAPIHono<AppEnv>();
 
 	app.use("*", requestId(opts.requestIdHeader));
 
 	app.route("/", operationalRoutes(opts.registry));
 	app.route("/v1/workspaces", workspaceRoutes(opts.registry));
+
+	app.doc31("/v1/openapi.json", {
+		openapi: "3.1.0",
+		info: {
+			title: "AI Workbench",
+			version: VERSION,
+			description:
+				"Single-runtime, multi-workspace workbench for Astra DB and the Data API.",
+			license: { name: "TBD" },
+		},
+		servers: [{ url: "/" }],
+	});
+
+	app.get(
+		"/docs",
+		Scalar({
+			url: "/v1/openapi.json",
+			theme: "default",
+			pageTitle: "AI Workbench API",
+		}),
+	);
 
 	app.notFound((c) =>
 		c.json(

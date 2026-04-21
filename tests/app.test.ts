@@ -187,3 +187,38 @@ describe("error handling", () => {
 		expect(body.error.code).toBe("not_found");
 	});
 });
+
+describe("openapi", () => {
+	test("GET /v1/openapi.json returns a 3.1 document", async () => {
+		const res = await makeApp().request("/v1/openapi.json");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.openapi).toBe("3.1.0");
+		expect(body.info.title).toBe("AI Workbench");
+	});
+
+	test("openapi document lists all six Phase 0 paths", async () => {
+		const res = await makeApp().request("/v1/openapi.json");
+		const body = await json(res);
+		const paths = Object.keys(body.paths);
+		expect(paths).toContain("/");
+		expect(paths).toContain("/healthz");
+		expect(paths).toContain("/readyz");
+		expect(paths).toContain("/version");
+		expect(paths).toContain("/v1/workspaces");
+		expect(paths).toContain("/v1/workspaces/{workspaceId}");
+	});
+
+	test("openapi document includes shared error envelope schema", async () => {
+		const res = await makeApp().request("/v1/openapi.json");
+		const body = await json(res);
+		expect(body.components.schemas.ErrorEnvelope).toBeDefined();
+	});
+
+	test("GET /docs serves the Scalar reference UI", async () => {
+		const res = await makeApp().request("/docs");
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		expect(text).toContain("/v1/openapi.json");
+	});
+});
