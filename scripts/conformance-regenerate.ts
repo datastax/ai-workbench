@@ -83,7 +83,7 @@ async function main(): Promise<void> {
 		};
 		await writeFile(
 			fixturePath,
-			`${JSON.stringify(payload, null, 2)}\n`,
+			`${JSON.stringify(payload, null, "\t")}\n`,
 			"utf8",
 		);
 		// eslint-disable-next-line no-console
