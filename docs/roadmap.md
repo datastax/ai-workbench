@@ -92,8 +92,7 @@ Deliverables:
   search (vector + lexical + rerank if enabled on the bound vector
   store).
 - Saved queries per catalog
-  (`/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]`) from Cédrick's
-  spec.
+  (`/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]`).
 - Workspace-scoped API keys (`wb_workspace_api_keys`) — the runtime
   finally grows an auth boundary.
 

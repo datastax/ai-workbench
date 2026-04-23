@@ -164,9 +164,9 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Until Stefano implements the FastAPI routes, `xfail(strict=True)`
-markers guard the scenarios. Each marker comes off as its scenario
-goes green.
+Until the Python runtime's FastAPI routes are implemented,
+`xfail(strict=True)` markers guard the scenarios. Each marker comes
+off as its scenario goes green.
 
 ## The mock Astra server
 

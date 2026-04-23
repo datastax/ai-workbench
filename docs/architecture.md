@@ -43,8 +43,8 @@ embedded with the UI, and alternatives live under
 
 ## The "green box" model
 
-Cédrick's architecture diagram has one green box per language-native
-runtime. Every green box:
+The architecture is one green box per language-native runtime.
+Every green box:
 
 - Serves the same `/api/v1/*` surface.
 - Speaks Astra via its own language-native SDK internally.
