@@ -146,9 +146,6 @@ corresponding phase:
   single-node self-hosted. Hosted deployments likely want pluggable
   providers (Vault, AWS Secrets Manager, etc.). `SecretProvider`
   already supports this.
-- **Workspace ↔ data-plane routing.** Today's control plane stores
-  the workspace's `kind` and `credentialsRef` but doesn't yet dial
-  into per-workspace backends. Lands with Phase 1b.
 - **Chunker/embedder plugin model.** In-process only, external HTTP
   contract, or both?
 - **Hot reload.** Worth the complexity, or is restart-on-change

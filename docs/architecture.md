@@ -197,7 +197,9 @@ is separate — chosen via `workbench.yaml`.
 
 **`wb_vector_store_by_workspace` is a DESCRIPTOR row**, not the
 vector data. The actual Data API Collection holding vectors is a
-separate object provisioned when Phase 1b lands.
+separate object, provisioned transactionally by the workspace's
+vector-store driver (see the *Vector-store drivers* section above)
+when the descriptor is created.
 
 ## Isolation and scoping
 
