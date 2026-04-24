@@ -11,7 +11,7 @@ runnable artifact and a stable slice of the HTTP contract.
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
-| 2b | Ingest + catalog-scoped search + saved queries | In progress — search, sync+async ingest, jobs/SSE shipped |
+| 2b | Ingest + catalog-scoped search + saved queries | In progress — search, sync+async ingest, jobs/SSE shipped ingest, saved queries shipped |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login | ✅ Shipped (1–3b); 3c (silent refresh) + 4 (RBAC) planned |
@@ -134,6 +134,14 @@ Shipped in this phase so far:
   now — durable job backends are a follow-up; in-flight jobs do not
   resume across restart. Not in conformance (timing-dependent);
   covered by TypeScript runtime tests.
+- **Saved queries** — `/api/v1/workspaces/{w}/catalogs/{c}/queries`
+  CRUD + `POST /{q}/run` that replays through the catalog-scoped
+  search path. Text-only; the `/run` endpoint merges the catalog's
+  UID into the filter unconditionally so saved queries cannot escape
+  their catalog. New control-plane table
+  (`wb_saved_queries_by_catalog` on astra); cascades on
+  workspace/catalog delete. Covered by scenario
+  `catalog-saved-queries`.
 
 Planned for the rest of 2b:
 

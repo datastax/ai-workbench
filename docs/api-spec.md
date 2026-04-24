@@ -78,6 +78,7 @@ human-readable and may change. Currently emitted:
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
 | 404 | `job_not_found` | Job UID doesn't exist in the workspace |
+| 404 | `saved_query_not_found` | Saved query UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
 | 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search, ingest, or saved-query run against a catalog whose `vectorStore` is `null` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
@@ -867,15 +868,99 @@ resubmits. Durable job backends (file, astra) are a later slice.
 
 ---
 
+## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/queries`
+
+Saved search recipes scoped to a catalog. Each `SavedQuery` carries a
+`text` plus optional `topK` and `filter`, and is replayed through the
+catalog-scoped search path by `POST /{queryId}/run`.
+
+Deleting a workspace or catalog cascades to its saved queries (every
+backend — memory, file, astra).
+
+A `SavedQuery`:
+
+```json
+{
+  "workspace": "…",
+  "catalogUid": "…",
+  "queryUid": "…",
+  "name": "refunds",
+  "description": "billing questions",
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" },
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+Text-only by design — saved vectors are rarely the right abstraction
+and serialize heavily. Callers wanting vector-form queries write the
+search body directly against `POST /documents/search`.
+
+### `GET`
+
+List saved queries in the catalog.
+
+- **200** — array of `SavedQuery`
+- **404** `workspace_not_found` / `catalog_not_found`
+
+### `POST`
+
+Create a saved query. `uid` is optional.
+
+```json
+{
+  "name": "refunds",
+  "description": "billing questions",
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" }
+}
+```
+
+- **201** — the created `SavedQuery`
+- **404** `workspace_not_found` / `catalog_not_found`
+- **409** `conflict` — `uid` collision within the same catalog
+
+### `GET /{queryId}` / `PUT /{queryId}` / `DELETE /{queryId}`
+
+Fetch / patch / delete. `PUT` accepts every field from create (all
+optional). Deleting a non-existent query returns
+`404 saved_query_not_found`.
+
+### `POST /{queryId}/run`
+
+Execute a saved query and return the hits. The catalog's UID is
+merged into the effective filter — a saved filter carrying a
+different `catalogUid` is silently overridden, so a saved query can
+never escape its catalog.
+
+**Response 200** — array of `SearchHit` (same shape as
+`/documents/search`).
+
+**Errors**
+
+- **400** `embedding_unavailable` / `embedding_dimension_mismatch`
+  (client-side embedding fallback path)
+- **404** `workspace_not_found` / `catalog_not_found` /
+  `saved_query_not_found` / `vector_store_not_found`
+- **409** `catalog_not_bound_to_vector_store`
+
+---
+
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Saved queries + job persistence
+### Phase 2 — Saved queries + job persistence + Ingest async
 
 | Method | Path | Purpose |
 |---|---|---|
 | (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
+| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Async variant that returns a job id |
+| `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
+=======
 
 ### Phase 3 — Playground
 
