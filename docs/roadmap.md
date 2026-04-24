@@ -100,11 +100,23 @@ Shipped with the documents HTTP surface.
 **Goal:** end-to-end knowledge-base flow from raw file to searchable
 result.
 
-Deliverables:
+Shipped in this phase so far:
 
-- Chunking service contract and reference implementation (in-process).
-- Embedding service contract and reference implementation.
-- `POST .../catalogs/{c}/ingest` with async job semantics.
+- **Embedding seam.** `Embedder` / `EmbedderFactory` landed in Phase 3
+  for the Playground; reused verbatim by the ingest pipeline — no new
+  contract needed.
+- **Chunking seam.** `Chunker` contract at
+  `runtimes/typescript/src/ingest/chunker.ts` plus a reference
+  `RecursiveCharacterChunker` impl. Char-based, respects natural text
+  boundaries (`\n\n`, `\n`, `. `, `? `, `! `, ` `), overlap-aware, with
+  a shared contract suite (`tests/ingest/chunker-contract.ts`) that
+  any future chunker must pass.
+
+Planned for the rest of 2b:
+
+- `POST .../catalogs/{c}/ingest` with async job semantics — wires the
+  chunker + embedder + upsert together; stamps `catalogUid` and
+  `documentUid` into every record's payload.
 - `GET .../jobs/{jobId}` for status polling.
 - Streaming progress via SSE.
 - `POST .../catalogs/{c}/documents/search` — catalog-scoped hybrid
