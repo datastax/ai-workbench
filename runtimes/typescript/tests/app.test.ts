@@ -1114,6 +1114,252 @@ describe("catalog-scoped document search", () => {
 	});
 });
 
+describe("hybrid + rerank search lanes", () => {
+	async function seedIngestedCatalog() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		// Mock embedding provider so the mock driver retains text for
+		// lexical and can run hybrid / rerank.
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "vs",
+					vectorDimension: 4,
+					embedding: {
+						provider: "mock",
+						model: "mock-embedder",
+						endpoint: null,
+						dimension: 4,
+						secretRef: null,
+					},
+				}),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		// Seed two text records so lexical has something to score
+		// against.
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "apples",
+							text: "apples are red fruit and grow on trees",
+							payload: { catalogUid: catalog.uid },
+						},
+						{
+							id: "bananas",
+							text: "bananas are yellow fruit",
+							payload: { catalogUid: catalog.uid },
+						},
+					],
+				}),
+			},
+		);
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("hybrid: true returns both records, and the lexical match beats the other", async () => {
+		const { app, ws, catalog } = await seedIngestedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "apples", hybrid: true, topK: 5 }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits).toHaveLength(2);
+		// "apples" text should rank first — the lexical lane gives it
+		// a positive signal the other record can't match.
+		expect(hits[0].id).toBe("apples");
+	});
+
+	test("hybrid: true without text → 400 validation_error", async () => {
+		const { app, ws, catalog } = await seedIngestedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vector: [1, 0, 0, 0],
+					hybrid: true,
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("rerank: true reorders hits by the driver's rerank signal", async () => {
+		const { app, ws, catalog } = await seedIngestedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "apples trees",
+					rerank: true,
+					topK: 5,
+				}),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits.length).toBe(2);
+		// The reranker sorts by lexical overlap; "apples" has both
+		// "apples" and "trees" tokens in its stored text, "bananas"
+		// matches neither, so "apples" must come first.
+		expect(hits[0].id).toBe("apples");
+	});
+
+	test("rerank: true without text → 400 validation_error", async () => {
+		const { app, ws, catalog } = await seedIngestedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vector: [1, 0, 0, 0],
+					rerank: true,
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("hybrid: true on a descriptor whose driver lacks hybrid → 501", async () => {
+		// Reconfigure: same workspace/vs but using a provider the mock
+		// driver doesn't enable its hybrid/rerank lanes for.
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				// provider: "openai" — mock driver refuses hybrid for
+				// descriptors not configured as provider="mock".
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							vector: Array.from({ length: 1536 }, (_, i) => Math.sin(i)),
+							payload: { catalogUid: catalog.uid },
+						},
+					],
+				}),
+			},
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "apples", hybrid: true }),
+			},
+		);
+		expect(res.status).toBe(501);
+		expect((await json(res)).error.code).toBe("hybrid_not_supported");
+	});
+
+	test("descriptor lexical.enabled defaults `hybrid` to true", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "vs",
+					vectorDimension: 4,
+					embedding: {
+						provider: "mock",
+						model: "mock-embedder",
+						endpoint: null,
+						dimension: 4,
+						secretRef: null,
+					},
+					lexical: {
+						enabled: true,
+						analyzer: null,
+						options: {},
+					},
+				}),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "apples",
+							text: "apples are red fruit",
+							payload: { catalogUid: catalog.uid },
+						},
+						{
+							id: "bananas",
+							text: "bananas are yellow fruit",
+							payload: { catalogUid: catalog.uid },
+						},
+					],
+				}),
+			},
+		);
+		// No `hybrid` flag — should still fire hybrid because the
+		// descriptor opted in.
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "apples", topK: 5 }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits[0].id).toBe("apples");
+	});
+});
+
 describe("vector-store routes", () => {
 	test("POST creates a descriptor row and provisions a collection", async () => {
 		const { app, store } = makeApp();
