@@ -363,6 +363,44 @@ export const SearchHitSchema = z
 	})
 	.openapi("SearchHit");
 
+/* ---------------- Saved query ---------------- */
+
+export const SavedQueryRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		catalogUid: z.string().uuid(),
+		queryUid: z.string().uuid(),
+		name: z.string(),
+		description: z.string().nullable(),
+		text: z.string(),
+		topK: z.number().int().positive().max(1000).nullable(),
+		filter: z.record(z.string(), z.unknown()).nullable(),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+	})
+	.openapi("SavedQuery");
+
+export const CreateSavedQueryInputSchema = z
+	.object({
+		uid: z.string().uuid().optional(),
+		name: z.string().min(1),
+		description: z.string().nullable().optional(),
+		text: z.string().min(1),
+		topK: z.number().int().positive().max(1000).nullable().optional(),
+		filter: z.record(z.string(), z.unknown()).nullable().optional(),
+	})
+	.openapi("CreateSavedQueryInput");
+
+export const UpdateSavedQueryInputSchema = z
+	.object({
+		name: z.string().min(1).optional(),
+		description: z.string().nullable().optional(),
+		text: z.string().min(1).optional(),
+		topK: z.number().int().positive().max(1000).nullable().optional(),
+		filter: z.record(z.string(), z.unknown()).nullable().optional(),
+	})
+	.openapi("UpdateSavedQueryInput");
+
 /* ---------------- Ingest ---------------- */
 
 export const IngestChunkerOptionsSchema = z
@@ -407,6 +445,48 @@ export const IngestResponseSchema = z
 		chunks: z.number().int().nonnegative(),
 	})
 	.openapi("IngestResponse");
+
+/** Lifecycle of a background job. */
+export const JobStatusSchema = z
+	.enum(["pending", "running", "succeeded", "failed"])
+	.openapi("JobStatus");
+
+export const JobRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		jobId: z.string().uuid(),
+		kind: z.enum(["ingest"]),
+		catalogUid: z.string().uuid().nullable(),
+		documentUid: z.string().uuid().nullable(),
+		status: JobStatusSchema,
+		processed: z.number().int().nonnegative(),
+		total: z.number().int().nonnegative().nullable(),
+		result: z.record(z.string(), z.unknown()).nullable(),
+		errorMessage: z.string().nullable(),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+	})
+	.openapi("Job");
+
+/**
+ * 202 envelope for `POST /ingest?async=true`. Returns both the
+ * freshly-created job and the document row — callers can track
+ * either; they stay in sync as the pipeline progresses.
+ */
+export const AsyncIngestResponseSchema = z
+	.object({
+		job: JobRecordSchema,
+		document: DocumentRecordSchema,
+	})
+	.openapi("AsyncIngestResponse");
+
+export const JobIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "jobId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
 
 /* ---------------- Params ---------------- */
 
@@ -455,6 +535,14 @@ export const ApiKeyIdParamSchema = z
 	.uuid()
 	.openapi({
 		param: { name: "keyId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
+
+export const SavedQueryIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "queryId", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 

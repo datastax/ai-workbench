@@ -866,6 +866,203 @@ describe("catalog ingest", () => {
 	});
 });
 
+describe("catalog async ingest + jobs", () => {
+	async function seedBoundCatalog() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	async function waitForJob(
+		app: ReturnType<typeof makeApp>["app"],
+		workspaceId: string,
+		jobId: string,
+	): Promise<Record<string, unknown>> {
+		for (let i = 0; i < 50; i++) {
+			const res = await app.request(
+				`/api/v1/workspaces/${workspaceId}/jobs/${jobId}`,
+			);
+			const body = await json(res);
+			if (body.status === "succeeded" || body.status === "failed") return body;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		throw new Error(`job ${jobId} did not reach terminal state in time`);
+	}
+
+	test("POST /ingest?async=true returns 202 with a pending job", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest?async=true`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "Apples are red. Bananas are yellow.",
+					chunker: { maxChars: 20, minChars: 5, overlapChars: 3 },
+				}),
+			},
+		);
+		expect(res.status).toBe(202);
+		const body = await json(res);
+		expect(body.job.jobId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(body.job.status).toBe("pending");
+		expect(body.job.kind).toBe("ingest");
+		expect(body.job.catalogUid).toBe(catalog.uid);
+		expect(body.document.status).toBe("writing");
+	});
+
+	test("async job eventually reaches succeeded and the document is ready", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const kick = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest?async=true`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "Apples are red. Bananas are yellow. Cherries are red too.",
+					chunker: { maxChars: 20, minChars: 5, overlapChars: 3 },
+				}),
+			},
+		);
+		const body = await json(kick);
+		const final = await waitForJob(app, ws.uid, body.job.jobId);
+		expect(final.status).toBe("succeeded");
+		expect((final.result as { chunks: number }).chunks).toBeGreaterThan(0);
+		expect(final.processed).toBe((final.result as { chunks: number }).chunks);
+		expect(final.total).toBe(final.processed);
+		expect(final.errorMessage).toBeNull();
+
+		// The document row reflects the same completion.
+		const doc = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${body.document.documentUid}`,
+		);
+		const docBody = await json(doc);
+		expect(docBody.status).toBe("ready");
+	});
+
+	test("async job captures failures in the record (document + job both failed)", async () => {
+		// Build an app whose fallback embedder returns a wrong dimension
+		// so the ingest worker throws.
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory({ wrongDimension: 4 }),
+		});
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "bad",
+			vectorStore: vs.uid,
+		});
+
+		const kick = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest?async=true`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "some text to chunk and embed" }),
+			},
+		);
+		expect(kick.status).toBe(202);
+		const body = await json(kick);
+
+		// Poll for terminal state (same helper, inline here to reuse
+		// this app instance).
+		let final: Record<string, unknown> | null = null;
+		for (let i = 0; i < 50; i++) {
+			const res = await app.request(
+				`/api/v1/workspaces/${ws.uid}/jobs/${body.job.jobId}`,
+			);
+			const got = await json(res);
+			if (got.status === "succeeded" || got.status === "failed") {
+				final = got;
+				break;
+			}
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		expect(final).not.toBeNull();
+		expect(final?.status).toBe("failed");
+		expect(final?.errorMessage).toBeTruthy();
+
+		// Document row is also failed.
+		const doc = await store.getDocument(
+			ws.uid,
+			catalog.uid,
+			body.document.documentUid,
+		);
+		expect(doc?.status).toBe("failed");
+	});
+
+	test("GET /jobs/{jobId} → 404 for unknown jobs", async () => {
+		const { app, ws } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/jobs/00000000-0000-0000-0000-000000000000`,
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("job_not_found");
+	});
+
+	test("SSE stream emits job updates and closes on terminal state", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const kick = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest?async=true`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "Apples are red. Bananas are yellow.",
+					chunker: { maxChars: 20, minChars: 5, overlapChars: 3 },
+				}),
+			},
+		);
+		const body = await json(kick);
+
+		const sse = await app.request(
+			`/api/v1/workspaces/${ws.uid}/jobs/${body.job.jobId}/events`,
+		);
+		expect(sse.status).toBe(200);
+		expect(sse.headers.get("content-type")).toContain("text/event-stream");
+		const text = await sse.text();
+		// The stream MUST end with the terminal `done` event.
+		expect(text).toContain("event: job");
+		expect(text).toContain("event: done");
+		// And the last job event payload carries the terminal status.
+		expect(text).toMatch(/"status":"(succeeded|failed)"/);
+	});
+});
+
 describe("catalog-scoped document search", () => {
 	const vector = (seed: number, dim = 1536): number[] =>
 		Array.from({ length: dim }, (_, i) => Math.sin(seed + i));
@@ -1120,6 +1317,10 @@ describe("hybrid + rerank search lanes", () => {
 		const ws = await store.createWorkspace(MOCK_WORKSPACE);
 		// Mock embedding provider so the mock driver retains text for
 		// lexical and can run hybrid / rerank.
+describe("saved queries", () => {
+	async function seedCatalog(opts?: { bindVectorStore?: boolean }) {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
 		const vsRes = await app.request(
 			`/api/v1/workspaces/${ws.uid}/vector-stores`,
 			{
@@ -1136,6 +1337,7 @@ describe("hybrid + rerank search lanes", () => {
 						secretRef: null,
 					},
 				}),
+				body: JSON.stringify(BASE_VECTOR_STORE),
 			},
 		);
 		const vs = await json(vsRes);
@@ -1147,6 +1349,15 @@ describe("hybrid + rerank search lanes", () => {
 		// against.
 		await app.request(
 			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			vectorStore: opts?.bindVectorStore === false ? null : vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("CRUD lifecycle (create → list → get → update → delete)", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1191,6 +1402,63 @@ describe("hybrid + rerank search lanes", () => {
 		const { app, ws, catalog } = await seedIngestedCatalog();
 		const res = await app.request(
 			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+					name: "apples",
+					description: "find apple docs",
+					text: "apples",
+					topK: 5,
+					filter: { tag: "fruit" },
+				}),
+			},
+		);
+		expect(created.status).toBe(201);
+		const rec = await json(created);
+		expect(rec.queryUid).toMatch(/^[0-9a-f-]{36}$/);
+		expect(rec.name).toBe("apples");
+		expect(rec.filter).toEqual({ tag: "fruit" });
+
+		const list = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+		);
+		expect(list.status).toBe(200);
+		const listBody = await json(list);
+		expect(listBody).toHaveLength(1);
+
+		const got = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+		);
+		expect(got.status).toBe(200);
+		expect((await json(got)).text).toBe("apples");
+
+		const updated = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "APPLES", filter: null }),
+			},
+		);
+		const updatedBody = await json(updated);
+		expect(updatedBody.name).toBe("APPLES");
+		expect(updatedBody.filter).toBeNull();
+
+		const del = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+		const delAgain = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{ method: "DELETE" },
+		);
+		expect(delAgain.status).toBe(404);
+	});
+
+	test("POST /run replays the saved query through catalog-scoped search", async () => {
+		const { app, ws, vs, catalog } = await seedCatalog();
+		// Seed a record whose payload matches both the saved filter and the
+		// catalog scope.
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1208,6 +1476,24 @@ describe("hybrid + rerank search lanes", () => {
 		const { app, ws, catalog } = await seedIngestedCatalog();
 		const res = await app.request(
 			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+					records: [
+						{
+							id: "a",
+							text: "apples are red",
+							payload: { catalogUid: catalog.uid, tag: "fruit" },
+						},
+						{
+							id: "b",
+							text: "bananas are yellow",
+							payload: { catalogUid: catalog.uid, tag: "fruit" },
+						},
+					],
+				}),
+			},
+		);
+
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1262,6 +1548,29 @@ describe("hybrid + rerank search lanes", () => {
 		const vs = await json(vsRes);
 		const catalog = await store.createCatalog(ws.uid, {
 			name: "kb",
+					name: "apples",
+					text: "apples",
+					topK: 5,
+					filter: { tag: "fruit" },
+				}),
+			},
+		);
+		const rec = await json(created);
+
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		expect(run.status).toBe(200);
+		const hits = await json(run);
+		expect(hits.length).toBeGreaterThan(0);
+		expect(hits[0].payload.catalogUid).toBe(catalog.uid);
+	});
+
+	test("/run enforces catalog scope even when saved filter tries to escape", async () => {
+		const { app, store, ws, vs, catalog } = await seedCatalog();
+		const other = await store.createCatalog(ws.uid, {
+			name: "other",
 			vectorStore: vs.uid,
 		});
 		await app.request(
@@ -1297,6 +1606,24 @@ describe("hybrid + rerank search lanes", () => {
 		const ws = await store.createWorkspace(MOCK_WORKSPACE);
 		const vsRes = await app.request(
 			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+							text: "apples are red",
+							payload: { catalogUid: catalog.uid },
+						},
+						{
+							id: "b",
+							text: "bananas are yellow",
+							payload: { catalogUid: other.uid },
+						},
+					],
+				}),
+			},
+		);
+
+		// The saved query tries to request `catalogUid=other.uid` in its
+		// filter — the run route must override with the path's catalog,
+		// so only `a` should come back.
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1357,6 +1684,66 @@ describe("hybrid + rerank search lanes", () => {
 		expect(res.status).toBe(200);
 		const hits = await json(res);
 		expect(hits[0].id).toBe("apples");
+					name: "escape attempt",
+					text: "fruit",
+					filter: { catalogUid: other.uid },
+				}),
+			},
+		);
+		const rec = await json(created);
+
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		const hits = await json(run);
+		expect(hits.length).toBe(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("POST /run → 404 when the saved query does not exist", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/00000000-0000-0000-0000-000000000000/run`,
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("saved_query_not_found");
+	});
+
+	test("POST /run → 409 when catalog has no vectorStore binding", async () => {
+		const { app, ws, catalog } = await seedCatalog({ bindVectorStore: false });
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "q", text: "hi" }),
+			},
+		);
+		const rec = await json(created);
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		expect(run.status).toBe(409);
+		expect((await json(run)).error.code).toBe(
+			"catalog_not_bound_to_vector_store",
+		);
+	});
+
+	test("rejects empty name/text via Zod validation", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "", text: "" }),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
 	});
 });
 

@@ -163,3 +163,24 @@ An ingest against a catalog whose `vectorStore` is `null` returns
 `409 catalog_not_bound_to_vector_store`.
 
 Fixture: `fixtures/catalog-ingest-basic.json`.
+
+### Out of scope: async ingest + SSE
+
+`POST /ingest?async=true` and `GET /jobs/{jobId}/events` ship alongside the
+sync ingest route but aren't in the conformance corpus. The job's
+`status`, `processed`, and `updatedAt` fields all depend on when the
+runner happens to observe them, which makes the fixture comparison
+brittle. Runtime-specific tests (`tests/app.test.ts` on the TypeScript
+runtime) cover the wire shape + lifecycle with polling.
+---
+
+## Scenario 13 — `catalog-saved-queries`
+
+Saved-query CRUD under a catalog. Pins the wire shapes every runtime
+must produce on create/list/update/delete plus the post-delete 404
+(`saved_query_not_found`). `/run` semantics (replaying a saved query
+through catalog-scoped search, with the catalog UID always winning
+over the saved filter) stay in runtime tests — they depend on
+embedding providers that aren't portable across runtimes.
+
+Fixture: `fixtures/catalog-saved-queries.json`.

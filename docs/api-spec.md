@@ -77,10 +77,13 @@ human-readable and may change. Currently emitted:
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
+| 404 | `job_not_found` | Job UID doesn't exist in the workspace |
+| 404 | `saved_query_not_found` | Saved query UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
 | 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
 | 501 | `hybrid_not_supported` | Caller asked for hybrid search on a workspace kind whose driver doesn't implement `searchHybrid` |
 | 501 | `rerank_not_supported` | Caller asked for rerank on a workspace kind whose driver doesn't implement `rerank` |
+| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search, ingest, or saved-query run against a catalog whose `vectorStore` is `null` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
 | 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the descriptor |
@@ -795,9 +798,181 @@ caller-supplied values.
 the error is re-raised. Operators can inspect the row via
 `GET /documents/{id}`.
 
-Async ingest (job polling + SSE progress) is a Phase 2b follow-up;
-this route is the synchronous entry point that larger inputs will
-build on.
+### `POST /ingest?async=true`
+
+Same request body as the sync variant. The pipeline runs in the
+background; the response returns immediately with a job pointer so
+the UI doesn't block on long uploads.
+
+**Response 202**
+
+```json
+{
+  "job": {
+    "workspace": "…",
+    "jobId": "…",
+    "kind": "ingest",
+    "catalogUid": "…",
+    "documentUid": "…",
+    "status": "pending",
+    "processed": 0,
+    "total": null,
+    "result": null,
+    "errorMessage": null,
+    "createdAt": "…",
+    "updatedAt": "…"
+  },
+  "document": { "status": "writing", "…": "…" }
+}
+```
+
+Errors are the same set as the sync path — validation /
+embedding / not-found / 409. A 4xx means the request was rejected
+outright; nothing was enqueued and no job row exists.
+
+Once a job is running, failures are captured into the job record
+(`status: failed`, `errorMessage` populated) and the document row
+(also `status: failed`). The HTTP response has already been sent by
+then.
+
+**Progress callbacks.** The background worker reports
+`{processed, total}` via `JobStore.update`. Today it fires once
+before upsert (`processed: 0`) and once after (`processed: total`);
+later slices can emit per-batch updates without a contract change.
+
+---
+
+## `/api/v1/workspaces/{workspaceId}/jobs/{jobId}`
+
+Job poll surface for anything that runs in the background. Today
+only async ingest creates jobs; future bulk ops (reindex, export,
+batch delete) plug in with the same record shape.
+
+### `GET /{jobId}`
+
+Point-in-time fetch, suitable for polling. Returns the `Job`
+record described above.
+
+- **200** — `Job`
+- **404** `job_not_found`
+
+### `GET /{jobId}/events`
+
+Server-Sent Events stream. Emits `event: job` with the full record
+as JSON on every update, plus a final `event: done` carrying
+`{ status }` when the job hits a terminal state. The current record
+is replayed as the first `job` event so clients don't race the
+first update.
+
+Headers: `Content-Type: text/event-stream`, `Cache-Control:
+no-cache`.
+
+Single-replica only at this slice — the `JobStore` pub/sub lives
+in-process. Cross-process job fan-out (Redis etc.) ships alongside
+persistent job backends.
+
+### Job record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspace` | uuid | Owning workspace |
+| `jobId` | uuid | |
+| `kind` | `"ingest"` | Discriminator — more kinds arrive with more async ops |
+| `catalogUid` | uuid or null | Set for ingest jobs |
+| `documentUid` | uuid or null | Set for ingest jobs |
+| `status` | `"pending"` \| `"running"` \| `"succeeded"` \| `"failed"` | Terminal: succeeded, failed |
+| `processed` | int | Units completed |
+| `total` | int or null | Units expected (null if unknown) |
+| `result` | object or null | Kind-specific summary on success (ingest: `{ chunks: N }`) |
+| `errorMessage` | string or null | Populated on `failed` |
+| `createdAt` | iso-8601 | |
+| `updatedAt` | iso-8601 | |
+
+**Persistence note.** Jobs are stored in memory today and lost on
+process restart. In-flight jobs from a previous run do not resume —
+the document row stays at `writing` / `failed` and the caller
+resubmits. Durable job backends (file, astra) are a later slice.
+
+---
+
+## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/queries`
+
+Saved search recipes scoped to a catalog. Each `SavedQuery` carries a
+`text` plus optional `topK` and `filter`, and is replayed through the
+catalog-scoped search path by `POST /{queryId}/run`.
+
+Deleting a workspace or catalog cascades to its saved queries (every
+backend — memory, file, astra).
+
+A `SavedQuery`:
+
+```json
+{
+  "workspace": "…",
+  "catalogUid": "…",
+  "queryUid": "…",
+  "name": "refunds",
+  "description": "billing questions",
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" },
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+Text-only by design — saved vectors are rarely the right abstraction
+and serialize heavily. Callers wanting vector-form queries write the
+search body directly against `POST /documents/search`.
+
+### `GET`
+
+List saved queries in the catalog.
+
+- **200** — array of `SavedQuery`
+- **404** `workspace_not_found` / `catalog_not_found`
+
+### `POST`
+
+Create a saved query. `uid` is optional.
+
+```json
+{
+  "name": "refunds",
+  "description": "billing questions",
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" }
+}
+```
+
+- **201** — the created `SavedQuery`
+- **404** `workspace_not_found` / `catalog_not_found`
+- **409** `conflict` — `uid` collision within the same catalog
+
+### `GET /{queryId}` / `PUT /{queryId}` / `DELETE /{queryId}`
+
+Fetch / patch / delete. `PUT` accepts every field from create (all
+optional). Deleting a non-existent query returns
+`404 saved_query_not_found`.
+
+### `POST /{queryId}/run`
+
+Execute a saved query and return the hits. The catalog's UID is
+merged into the effective filter — a saved filter carrying a
+different `catalogUid` is silently overridden, so a saved query can
+never escape its catalog.
+
+**Response 200** — array of `SearchHit` (same shape as
+`/documents/search`).
+
+**Errors**
+
+- **400** `embedding_unavailable` / `embedding_dimension_mismatch`
+  (client-side embedding fallback path)
+- **404** `workspace_not_found` / `catalog_not_found` /
+  `saved_query_not_found` / `vector_store_not_found`
+- **409** `catalog_not_bound_to_vector_store`
 
 ---
 
@@ -805,13 +980,14 @@ build on.
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Ingest async + queries
+### Phase 2 — Saved queries + job persistence + Ingest async
 
 | Method | Path | Purpose |
 |---|---|---|
+| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Async variant that returns a job id |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
-| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
+=======
 
 ### Phase 3 — Playground
 
