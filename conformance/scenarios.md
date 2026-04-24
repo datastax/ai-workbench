@@ -163,3 +163,12 @@ An ingest against a catalog whose `vectorStore` is `null` returns
 `409 catalog_not_bound_to_vector_store`.
 
 Fixture: `fixtures/catalog-ingest-basic.json`.
+
+### Out of scope: async ingest + SSE
+
+`POST /ingest?async=true` and `GET /jobs/{jobId}/events` ship alongside the
+sync ingest route but aren't in the conformance corpus. The job's
+`status`, `processed`, and `updatedAt` fields all depend on when the
+runner happens to observe them, which makes the fixture comparison
+brittle. Runtime-specific tests (`tests/app.test.ts` on the TypeScript
+runtime) cover the wire shape + lifecycle with polling.

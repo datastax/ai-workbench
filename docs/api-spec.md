@@ -77,8 +77,9 @@ human-readable and may change. Currently emitted:
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
+| 404 | `job_not_found` | Job UID doesn't exist in the workspace |
 | 409 | `conflict` | Create with an already-taken UID |
-| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
+| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search, ingest, or saved-query run against a catalog whose `vectorStore` is `null` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
 | 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the descriptor |
@@ -769,9 +770,100 @@ caller-supplied values.
 the error is re-raised. Operators can inspect the row via
 `GET /documents/{id}`.
 
-Async ingest (job polling + SSE progress) is a Phase 2b follow-up;
-this route is the synchronous entry point that larger inputs will
-build on.
+### `POST /ingest?async=true`
+
+Same request body as the sync variant. The pipeline runs in the
+background; the response returns immediately with a job pointer so
+the UI doesn't block on long uploads.
+
+**Response 202**
+
+```json
+{
+  "job": {
+    "workspace": "…",
+    "jobId": "…",
+    "kind": "ingest",
+    "catalogUid": "…",
+    "documentUid": "…",
+    "status": "pending",
+    "processed": 0,
+    "total": null,
+    "result": null,
+    "errorMessage": null,
+    "createdAt": "…",
+    "updatedAt": "…"
+  },
+  "document": { "status": "writing", "…": "…" }
+}
+```
+
+Errors are the same set as the sync path — validation /
+embedding / not-found / 409. A 4xx means the request was rejected
+outright; nothing was enqueued and no job row exists.
+
+Once a job is running, failures are captured into the job record
+(`status: failed`, `errorMessage` populated) and the document row
+(also `status: failed`). The HTTP response has already been sent by
+then.
+
+**Progress callbacks.** The background worker reports
+`{processed, total}` via `JobStore.update`. Today it fires once
+before upsert (`processed: 0`) and once after (`processed: total`);
+later slices can emit per-batch updates without a contract change.
+
+---
+
+## `/api/v1/workspaces/{workspaceId}/jobs/{jobId}`
+
+Job poll surface for anything that runs in the background. Today
+only async ingest creates jobs; future bulk ops (reindex, export,
+batch delete) plug in with the same record shape.
+
+### `GET /{jobId}`
+
+Point-in-time fetch, suitable for polling. Returns the `Job`
+record described above.
+
+- **200** — `Job`
+- **404** `job_not_found`
+
+### `GET /{jobId}/events`
+
+Server-Sent Events stream. Emits `event: job` with the full record
+as JSON on every update, plus a final `event: done` carrying
+`{ status }` when the job hits a terminal state. The current record
+is replayed as the first `job` event so clients don't race the
+first update.
+
+Headers: `Content-Type: text/event-stream`, `Cache-Control:
+no-cache`.
+
+Single-replica only at this slice — the `JobStore` pub/sub lives
+in-process. Cross-process job fan-out (Redis etc.) ships alongside
+persistent job backends.
+
+### Job record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspace` | uuid | Owning workspace |
+| `jobId` | uuid | |
+| `kind` | `"ingest"` | Discriminator — more kinds arrive with more async ops |
+| `catalogUid` | uuid or null | Set for ingest jobs |
+| `documentUid` | uuid or null | Set for ingest jobs |
+| `status` | `"pending"` \| `"running"` \| `"succeeded"` \| `"failed"` | Terminal: succeeded, failed |
+| `processed` | int | Units completed |
+| `total` | int or null | Units expected (null if unknown) |
+| `result` | object or null | Kind-specific summary on success (ingest: `{ chunks: N }`) |
+| `errorMessage` | string or null | Populated on `failed` |
+| `createdAt` | iso-8601 | |
+| `updatedAt` | iso-8601 | |
+
+**Persistence note.** Jobs are stored in memory today and lost on
+process restart. In-flight jobs from a previous run do not resume —
+the document row stays at `writing` / `failed` and the caller
+resubmits. Durable job backends (file, astra) are a later slice.
 
 ---
 
@@ -779,12 +871,10 @@ build on.
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Ingest async + queries
+### Phase 2 — Saved queries + job persistence
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Async variant that returns a job id |
-| `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
 | (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
 
 ### Phase 3 — Playground
