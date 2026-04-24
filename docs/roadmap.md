@@ -11,7 +11,7 @@ runnable artifact and a stable slice of the HTTP contract.
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
-| 2b | Ingest + catalog-scoped search + saved queries | Planned |
+| 2b | Ingest + catalog-scoped search + saved queries | In progress — catalog-scoped search shipped |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login | ✅ Shipped (1–3b); 3c (silent refresh) + 4 (RBAC) planned |
@@ -119,9 +119,8 @@ Planned for the rest of 2b:
   `documentUid` into every record's payload.
 - `GET .../jobs/{jobId}` for status polling.
 - Streaming progress via SSE.
-- `POST .../catalogs/{c}/documents/search` — catalog-scoped hybrid
-  search (vector + lexical + rerank if enabled on the bound vector
-  store).
+- Lexical + rerank lanes for the catalog-scoped search (today's
+  implementation is vector-only).
 - Saved queries per catalog
   (`/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]`).
 
