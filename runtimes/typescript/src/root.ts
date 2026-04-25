@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { type AppLoginOptions, createApp } from "./app.js";
 import { buildAuthResolver } from "./auth/factory.js";
@@ -71,9 +72,9 @@ async function main(): Promise<void> {
 	const readiness = { draining: false };
 	const replicaId =
 		config.runtime.replicaId ??
-		`${process.env.HOSTNAME?.trim() || "wb"}-${Math.random()
-			.toString(36)
-			.slice(2, 10)}`;
+		`${process.env.HOSTNAME?.trim() || "wb"}-${randomUUID()
+			.replace(/-/g, "")
+			.slice(0, 8)}`;
 	const app = createApp({
 		store,
 		drivers,

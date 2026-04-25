@@ -15,6 +15,7 @@
  *   `/docs`                                       Scalar-rendered docs
  */
 
+import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
@@ -254,10 +255,6 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
  */
 function generateReplicaId(): string {
 	const host = process.env.HOSTNAME?.trim() || "wb";
-	const rand = (
-		globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
-	)
-		.replace(/-/g, "")
-		.slice(0, 8);
+	const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 	return `${host}-${rand}`;
 }
