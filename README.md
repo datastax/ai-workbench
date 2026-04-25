@@ -144,6 +144,7 @@ Ingestion, catalog-scoped search, and saved queries land in Phase 2b —
 | [`docs/examples/workbench.yaml`](docs/examples/workbench.yaml) | Annotated sample config |
 | [`runtimes/README.md`](runtimes/README.md) | Index of language-native runtimes |
 | [`conformance/README.md`](conformance/README.md) | Conformance harness overview |
+| [`site/README.md`](site/README.md) | Landing page + docs site scaffold (Astro + Starlight; not yet wired to deploy) |
 
 ## Project layout
 
