@@ -1,13 +1,30 @@
 # Cross-replica jobs — design note
 
-Status: **proposed**, not started. Captures the design space around
-two open items from `roadmap.md` Phase 2b:
+Status snapshot:
+
+| Slice | Status |
+|---|---|
+| Subscription fan-out via Astra-table polling | ✅ shipped |
+| Lease columns + heartbeat on running jobs | ✅ shipped |
+| Orphan-sweeper that reclaims stale leases (detect + mark failed) | ✅ shipped |
+| Pipeline resume after reclaim | planned (needs persisted ingest input) |
+
+Captures the design space around two open items from `roadmap.md`
+Phase 2b:
 
 > Cross-replica job pub/sub + in-flight resume after restart (today
 > the record survives restart but the owning worker doesn't).
 
-The goal of this note is to land the design on paper so the
-follow-up PR is a one-mechanic change, not a discovery exercise.
+The note exists so each implementation PR is a one-mechanic change,
+not a discovery exercise. Subscription fan-out shipped via the
+Astra-table polling backend; the lease + heartbeat + sweeper slices
+shipped together as the in-flight-resume foundation. Actual pipeline
+re-run from the last upserted chunk is the remaining piece — the
+sweeper currently marks orphans `failed` with an actionable error
+message instead of looping the original ingest, because the original
+`IngestRequest` (text, sourceFilename, chunker opts) isn't persisted
+alongside the job record. Adding `ingest_input_json` is a one-
+column migration; see "Open questions for the implementer" below.
 
 ## Today's behavior
 
