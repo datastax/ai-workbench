@@ -16,9 +16,9 @@
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
-import { logger } from "../lib/logger.js";
 import type { IngestInput } from "../ingest/pipeline.js";
 import { runIngest } from "../ingest/pipeline.js";
+import { logger } from "../lib/logger.js";
 import type { JobStore } from "./store.js";
 import type { JobRecord } from "./types.js";
 
