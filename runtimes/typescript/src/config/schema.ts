@@ -213,6 +213,19 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 		tokenRef: SecretRef,
 		keyspace: z.string().min(1).default("workbench"),
 		jobsResume: JobsResumeSchema.optional(),
+		/**
+		 * Cross-replica job-subscriber poll interval, ms. Each Astra
+		 * job subscriber polls the underlying record at this cadence
+		 * to pick up updates that landed on a *different* replica
+		 * (same-replica updates fan out instantly through the
+		 * in-process listener registry). Default 500ms; raise for
+		 * cost-sensitive deployments where second-scale staleness is
+		 * fine, lower for hot SSE work where every chunk matters.
+		 * The poller is a no-op when no one is subscribed.
+		 *
+		 * Background: docs/cross-replica-jobs.md.
+		 */
+		jobPollIntervalMs: z.number().int().min(50).max(60_000).default(500),
 	}),
 ]);
 
