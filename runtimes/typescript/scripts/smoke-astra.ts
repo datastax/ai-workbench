@@ -38,6 +38,7 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createApp } from "../src/app.js";
+import { buildAuthResolver } from "../src/auth/factory.js";
 import { controlPlaneFromConfig } from "../src/control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "../src/drivers/factory.js";
 import { makeEmbedderFactory } from "../src/embeddings/factory.js";
@@ -45,7 +46,6 @@ import { buildJobStore } from "../src/jobs/factory.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { FileSecretProvider } from "../src/secrets/file.js";
 import { SecretResolver } from "../src/secrets/provider.js";
-import { buildAuthResolver } from "../src/auth/factory.js";
 
 const TOKEN_ENV = "ASTRA_DB_APPLICATION_TOKEN";
 const ENDPOINT_RAW = process.env.ASTRA_DB_API_ENDPOINT;
@@ -223,12 +223,7 @@ async function main(): Promise<void> {
 		const jobId = asyncBody.job.jobId;
 		log("async ingest queued", { jobId });
 
-		const final = await waitForJobTerminal(
-			app,
-			workspaceUid,
-			jobId,
-			15_000,
-		);
+		const final = await waitForJobTerminal(app, workspaceUid, jobId, 15_000);
 		if (final.status !== "succeeded") {
 			throw new Error(
 				`async ingest did not succeed; got ${final.status}: ${final.errorMessage}`,
@@ -248,9 +243,7 @@ async function main(): Promise<void> {
 		assertStatus(searchRes, 200, "search");
 		const hits = await searchRes.json();
 		if (!Array.isArray(hits) || hits.length === 0) {
-			throw new Error(
-				`search returned no hits — pipeline produced 0 chunks?`,
-			);
+			throw new Error(`search returned no hits — pipeline produced 0 chunks?`);
 		}
 		log("search ok", { hits: hits.length });
 
@@ -262,10 +255,9 @@ async function main(): Promise<void> {
 		// from this run age out via standard ops, no special cleanup.
 		if (workspaceUid) {
 			try {
-				const del = await app.request(
-					`/api/v1/workspaces/${workspaceUid}`,
-					{ method: "DELETE" },
-				);
+				const del = await app.request(`/api/v1/workspaces/${workspaceUid}`, {
+					method: "DELETE",
+				});
 				log("cleanup workspace", { status: del.status });
 			} catch (err) {
 				log(
@@ -309,7 +301,9 @@ async function waitForJobTerminal(
 		}
 		await sleep(250);
 	}
-	throw new Error(`job ${jobId} did not reach terminal state in ${timeoutMs}ms`);
+	throw new Error(
+		`job ${jobId} did not reach terminal state in ${timeoutMs}ms`,
+	);
 }
 
 main().catch((err) => {
