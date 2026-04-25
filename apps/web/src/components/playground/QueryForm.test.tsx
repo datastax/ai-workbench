@@ -111,15 +111,15 @@ describe("QueryForm", () => {
 		);
 
 		// Pre-toggle: slider should not be in the DOM.
-		expect(
-			screen.queryByLabelText(/Lexical weight/i),
-		).not.toBeInTheDocument();
+		expect(screen.queryByLabelText(/Lexical weight/i)).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("checkbox", { name: /Hybrid/ }));
 
 		// Post-toggle: slider appears with the default value rendered in
 		// the label.
-		expect(screen.getByLabelText(/Lexical weight \(0\.50\)/)).toBeInTheDocument();
+		expect(
+			screen.getByLabelText(/Lexical weight \(0\.50\)/),
+		).toBeInTheDocument();
 	});
 
 	it("forwards a custom lexical weight when the slider is dragged", async () => {
