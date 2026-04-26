@@ -5,7 +5,7 @@ describe("safeErrorMessage", () => {
 	test("redacts common credential shapes", () => {
 		const message = safeErrorMessage(
 			new Error(
-				"failed with token=AstraCS:abc123 and Authorization: Bearer wb_live_aaaaaaaaaaaa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"failed with token=AstraCS:abc123 and Authorization: Bearer wb_live_aaaaaaaaaaaa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // secret-scan: allow
 			),
 		);
 		expect(message).not.toContain("AstraCS:abc123");
