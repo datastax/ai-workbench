@@ -19,9 +19,14 @@ import {
 	assertVectorStorePatchIsEmpty,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
+	DEFAULT_AUTH_TYPE,
+	DEFAULT_DISTANCE_METRIC,
+	DEFAULT_KB_STATUS,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
+	DEFAULT_SERVICE_STATUS,
 	DEFAULT_SIMILARITY,
+	defaultVectorCollection,
 	nowIso,
 } from "../defaults.js";
 import {
@@ -31,13 +36,21 @@ import {
 import type {
 	ControlPlaneStore,
 	CreateCatalogInput,
+	CreateChunkingServiceInput,
 	CreateDocumentInput,
+	CreateEmbeddingServiceInput,
+	CreateKnowledgeBaseInput,
+	CreateRerankingServiceInput,
 	CreateSavedQueryInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateCatalogInput,
+	UpdateChunkingServiceInput,
 	UpdateDocumentInput,
+	UpdateEmbeddingServiceInput,
+	UpdateKnowledgeBaseInput,
+	UpdateRerankingServiceInput,
 	UpdateSavedQueryInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
@@ -45,11 +58,27 @@ import type {
 import type {
 	ApiKeyRecord,
 	CatalogRecord,
+	ChunkingServiceRecord,
 	DocumentRecord,
+	EmbeddingServiceRecord,
+	KnowledgeBaseRecord,
+	RerankingServiceRecord,
 	SavedQueryRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../types.js";
+
+/**
+ * Normalise a `Set | array | undefined` input into a deduplicated,
+ * sorted, frozen array. Sorted because callers expect deterministic
+ * ordering on the wire — and the Astra column type is `SET<TEXT>`,
+ * which is also deduplicated. */
+function freezeStringSet(
+	value: ReadonlySet<string> | readonly string[] | undefined,
+): readonly string[] {
+	const arr = [...new Set(value ?? [])].sort();
+	return Object.freeze(arr);
+}
 
 function docKey(workspace: string, catalog: string): string {
 	return `${workspace}:${catalog}`;
@@ -81,6 +110,24 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	>();
 	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
 	private readonly apiKeyPrefixIndex = new Map<string, ApiKeyRecord>();
+	// Knowledge-base schema (issue #98). All four maps follow the same
+	// `Map<workspaceUid, Map<recordUid, Record>>` shape.
+	private readonly knowledgeBases = new Map<
+		string,
+		Map<string, KnowledgeBaseRecord>
+	>();
+	private readonly chunkingServices = new Map<
+		string,
+		Map<string, ChunkingServiceRecord>
+	>();
+	private readonly embeddingServices = new Map<
+		string,
+		Map<string, EmbeddingServiceRecord>
+	>();
+	private readonly rerankingServices = new Map<
+		string,
+		Map<string, RerankingServiceRecord>
+	>();
 
 	/* ---------------- Workspaces ---------------- */
 
@@ -153,6 +200,11 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				this.apiKeyPrefixIndex.delete(rec.prefix);
 			this.apiKeys.delete(uid);
 		}
+		// Knowledge-base schema cascades.
+		this.knowledgeBases.delete(uid);
+		this.chunkingServices.delete(uid);
+		this.embeddingServices.delete(uid);
+		this.rerankingServices.delete(uid);
 		return { deleted };
 	}
 
@@ -591,6 +643,460 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		this.apiKeyPrefixIndex.set(existing.prefix, touched);
 	}
 
+	/* ---------------- Knowledge bases (issue #98) ---------------- */
+
+	async listKnowledgeBases(
+		workspace: string,
+	): Promise<readonly KnowledgeBaseRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.knowledgeBases.get(workspace)?.values() ?? []);
+	}
+
+	async getKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<KnowledgeBaseRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.knowledgeBases.get(workspace)?.get(uid) ?? null;
+	}
+
+	async createKnowledgeBase(
+		workspace: string,
+		input: CreateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> {
+		await this.assertWorkspace(workspace);
+		await this.assertEmbeddingService(workspace, input.embeddingServiceId);
+		await this.assertChunkingService(workspace, input.chunkingServiceId);
+		if (input.rerankingServiceId) {
+			await this.assertRerankingService(workspace, input.rerankingServiceId);
+		}
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.knowledgeBases.get(workspace) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`knowledge base with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: KnowledgeBaseRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_KB_STATUS,
+			embeddingServiceId: input.embeddingServiceId,
+			chunkingServiceId: input.chunkingServiceId,
+			rerankingServiceId: input.rerankingServiceId ?? null,
+			language: input.language ?? null,
+			vectorCollection: input.vectorCollection ?? defaultVectorCollection(uid),
+			lexical: input.lexical ?? DEFAULT_LEXICAL,
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.knowledgeBases.set(workspace, bucket);
+		return record;
+	}
+
+	async updateKnowledgeBase(
+		workspace: string,
+		uid: string,
+		patch: UpdateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = this.knowledgeBases.get(workspace)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("knowledge base", uid);
+		}
+		if (patch.rerankingServiceId !== undefined && patch.rerankingServiceId !== null) {
+			await this.assertRerankingService(workspace, patch.rerankingServiceId);
+		}
+		const next: KnowledgeBaseRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && { description: patch.description }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.rerankingServiceId !== undefined && {
+				rerankingServiceId: patch.rerankingServiceId,
+			}),
+			...(patch.language !== undefined && { language: patch.language }),
+			...(patch.lexical !== undefined && { lexical: patch.lexical }),
+			updatedAt: nowIso(),
+		};
+		this.knowledgeBases.get(workspace)?.set(uid, next);
+		return next;
+	}
+
+	async deleteKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		return {
+			deleted: this.knowledgeBases.get(workspace)?.delete(uid) ?? false,
+		};
+	}
+
+	/* ---------------- Chunking services ---------------- */
+
+	async listChunkingServices(
+		workspace: string,
+	): Promise<readonly ChunkingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.chunkingServices.get(workspace)?.values() ?? []);
+	}
+
+	async getChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<ChunkingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.chunkingServices.get(workspace)?.get(uid) ?? null;
+	}
+
+	async createChunkingService(
+		workspace: string,
+		input: CreateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.chunkingServices.get(workspace) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`chunking service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: ChunkingServiceRecord = {
+			workspaceId: workspace,
+			chunkingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			engine: input.engine,
+			engineVersion: input.engineVersion ?? null,
+			strategy: input.strategy ?? null,
+			maxChunkSize: input.maxChunkSize ?? null,
+			minChunkSize: input.minChunkSize ?? null,
+			chunkUnit: input.chunkUnit ?? null,
+			overlapSize: input.overlapSize ?? null,
+			overlapUnit: input.overlapUnit ?? null,
+			preserveStructure: input.preserveStructure ?? null,
+			language: input.language ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			maxPayloadSizeKb: input.maxPayloadSizeKb ?? null,
+			enableOcr: input.enableOcr ?? null,
+			extractTables: input.extractTables ?? null,
+			extractFigures: input.extractFigures ?? null,
+			readingOrder: input.readingOrder ?? null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.chunkingServices.set(workspace, bucket);
+		return record;
+	}
+
+	async updateChunkingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = this.chunkingServices.get(workspace)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("chunking service", uid);
+		}
+		const next: ChunkingServiceRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && { description: patch.description }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.engine !== undefined && { engine: patch.engine }),
+			...(patch.engineVersion !== undefined && { engineVersion: patch.engineVersion }),
+			...(patch.strategy !== undefined && { strategy: patch.strategy }),
+			...(patch.maxChunkSize !== undefined && { maxChunkSize: patch.maxChunkSize }),
+			...(patch.minChunkSize !== undefined && { minChunkSize: patch.minChunkSize }),
+			...(patch.chunkUnit !== undefined && { chunkUnit: patch.chunkUnit }),
+			...(patch.overlapSize !== undefined && { overlapSize: patch.overlapSize }),
+			...(patch.overlapUnit !== undefined && { overlapUnit: patch.overlapUnit }),
+			...(patch.preserveStructure !== undefined && {
+				preserveStructure: patch.preserveStructure,
+			}),
+			...(patch.language !== undefined && { language: patch.language }),
+			...(patch.endpointBaseUrl !== undefined && {
+				endpointBaseUrl: patch.endpointBaseUrl,
+			}),
+			...(patch.endpointPath !== undefined && { endpointPath: patch.endpointPath }),
+			...(patch.requestTimeoutMs !== undefined && {
+				requestTimeoutMs: patch.requestTimeoutMs,
+			}),
+			...(patch.authType !== undefined && { authType: patch.authType }),
+			...(patch.credentialRef !== undefined && { credentialRef: patch.credentialRef }),
+			...(patch.maxPayloadSizeKb !== undefined && {
+				maxPayloadSizeKb: patch.maxPayloadSizeKb,
+			}),
+			...(patch.enableOcr !== undefined && { enableOcr: patch.enableOcr }),
+			...(patch.extractTables !== undefined && { extractTables: patch.extractTables }),
+			...(patch.extractFigures !== undefined && { extractFigures: patch.extractFigures }),
+			...(patch.readingOrder !== undefined && { readingOrder: patch.readingOrder }),
+			updatedAt: nowIso(),
+		};
+		this.chunkingServices.get(workspace)?.set(uid, next);
+		return next;
+	}
+
+	async deleteChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		this.assertServiceNotReferenced(workspace, "chunkingServiceId", uid);
+		return {
+			deleted: this.chunkingServices.get(workspace)?.delete(uid) ?? false,
+		};
+	}
+
+	/* ---------------- Embedding services ---------------- */
+
+	async listEmbeddingServices(
+		workspace: string,
+	): Promise<readonly EmbeddingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.embeddingServices.get(workspace)?.values() ?? []);
+	}
+
+	async getEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<EmbeddingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.embeddingServices.get(workspace)?.get(uid) ?? null;
+	}
+
+	async createEmbeddingService(
+		workspace: string,
+		input: CreateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.embeddingServices.get(workspace) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`embedding service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: EmbeddingServiceRecord = {
+			workspaceId: workspace,
+			embeddingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			modelName: input.modelName,
+			embeddingDimension: input.embeddingDimension,
+			distanceMetric: input.distanceMetric ?? DEFAULT_DISTANCE_METRIC,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			maxInputTokens: input.maxInputTokens ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.embeddingServices.set(workspace, bucket);
+		return record;
+	}
+
+	async updateEmbeddingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = this.embeddingServices.get(workspace)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("embedding service", uid);
+		}
+		const next: EmbeddingServiceRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && { description: patch.description }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.provider !== undefined && { provider: patch.provider }),
+			...(patch.modelName !== undefined && { modelName: patch.modelName }),
+			...(patch.embeddingDimension !== undefined && {
+				embeddingDimension: patch.embeddingDimension,
+			}),
+			...(patch.distanceMetric !== undefined && {
+				distanceMetric: patch.distanceMetric,
+			}),
+			...(patch.endpointBaseUrl !== undefined && {
+				endpointBaseUrl: patch.endpointBaseUrl,
+			}),
+			...(patch.endpointPath !== undefined && { endpointPath: patch.endpointPath }),
+			...(patch.requestTimeoutMs !== undefined && {
+				requestTimeoutMs: patch.requestTimeoutMs,
+			}),
+			...(patch.maxBatchSize !== undefined && { maxBatchSize: patch.maxBatchSize }),
+			...(patch.maxInputTokens !== undefined && {
+				maxInputTokens: patch.maxInputTokens,
+			}),
+			...(patch.authType !== undefined && { authType: patch.authType }),
+			...(patch.credentialRef !== undefined && { credentialRef: patch.credentialRef }),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		this.embeddingServices.get(workspace)?.set(uid, next);
+		return next;
+	}
+
+	async deleteEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		this.assertServiceNotReferenced(workspace, "embeddingServiceId", uid);
+		return {
+			deleted: this.embeddingServices.get(workspace)?.delete(uid) ?? false,
+		};
+	}
+
+	/* ---------------- Reranking services ---------------- */
+
+	async listRerankingServices(
+		workspace: string,
+	): Promise<readonly RerankingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.rerankingServices.get(workspace)?.values() ?? []);
+	}
+
+	async getRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<RerankingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.rerankingServices.get(workspace)?.get(uid) ?? null;
+	}
+
+	async createRerankingService(
+		workspace: string,
+		input: CreateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.rerankingServices.get(workspace) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`reranking service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: RerankingServiceRecord = {
+			workspaceId: workspace,
+			rerankingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			engine: input.engine ?? null,
+			modelName: input.modelName,
+			modelVersion: input.modelVersion ?? null,
+			maxCandidates: input.maxCandidates ?? null,
+			scoringStrategy: input.scoringStrategy ?? null,
+			scoreNormalized: input.scoreNormalized ?? null,
+			returnScores: input.returnScores ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.rerankingServices.set(workspace, bucket);
+		return record;
+	}
+
+	async updateRerankingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = this.rerankingServices.get(workspace)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("reranking service", uid);
+		}
+		const next: RerankingServiceRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && { description: patch.description }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.provider !== undefined && { provider: patch.provider }),
+			...(patch.engine !== undefined && { engine: patch.engine }),
+			...(patch.modelName !== undefined && { modelName: patch.modelName }),
+			...(patch.modelVersion !== undefined && { modelVersion: patch.modelVersion }),
+			...(patch.maxCandidates !== undefined && { maxCandidates: patch.maxCandidates }),
+			...(patch.scoringStrategy !== undefined && {
+				scoringStrategy: patch.scoringStrategy,
+			}),
+			...(patch.scoreNormalized !== undefined && {
+				scoreNormalized: patch.scoreNormalized,
+			}),
+			...(patch.returnScores !== undefined && { returnScores: patch.returnScores }),
+			...(patch.endpointBaseUrl !== undefined && {
+				endpointBaseUrl: patch.endpointBaseUrl,
+			}),
+			...(patch.endpointPath !== undefined && { endpointPath: patch.endpointPath }),
+			...(patch.requestTimeoutMs !== undefined && {
+				requestTimeoutMs: patch.requestTimeoutMs,
+			}),
+			...(patch.maxBatchSize !== undefined && { maxBatchSize: patch.maxBatchSize }),
+			...(patch.authType !== undefined && { authType: patch.authType }),
+			...(patch.credentialRef !== undefined && { credentialRef: patch.credentialRef }),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		this.rerankingServices.get(workspace)?.set(uid, next);
+		return next;
+	}
+
+	async deleteRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		this.assertServiceNotReferenced(workspace, "rerankingServiceId", uid);
+		return {
+			deleted: this.rerankingServices.get(workspace)?.delete(uid) ?? false,
+		};
+	}
+
 	/* ---------------- Helpers ---------------- */
 
 	private async assertWorkspace(uid: string): Promise<void> {
@@ -629,6 +1135,52 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
+			);
+		}
+	}
+
+	private async assertChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		if (!this.chunkingServices.get(workspace)?.has(uid)) {
+			throw new ControlPlaneNotFoundError("chunking service", uid);
+		}
+	}
+
+	private async assertEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		if (!this.embeddingServices.get(workspace)?.has(uid)) {
+			throw new ControlPlaneNotFoundError("embedding service", uid);
+		}
+	}
+
+	private async assertRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		if (!this.rerankingServices.get(workspace)?.has(uid)) {
+			throw new ControlPlaneNotFoundError("reranking service", uid);
+		}
+	}
+
+	/**
+	 * Refuse to delete a service that any KB still references on the
+	 * given field. Mirrors the pattern used for vector-store deletion.
+	 */
+	private assertServiceNotReferenced(
+		workspace: string,
+		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
+		serviceUid: string,
+	): void {
+		const ref = Array.from(
+			this.knowledgeBases.get(workspace)?.values() ?? [],
+		).find((kb) => kb[field] === serviceUid);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
 			);
 		}
 	}

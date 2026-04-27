@@ -298,8 +298,11 @@ export interface EmbeddingServiceRecord extends ServiceEndpointConfig {
 	readonly distanceMetric: DistanceMetric;
 	readonly maxBatchSize: number | null;
 	readonly maxInputTokens: number | null;
-	readonly supportedLanguages: ReadonlySet<string>;
-	readonly supportedContent: ReadonlySet<string>;
+	/** Sorted, deduplicated. Backed by `SET<TEXT>` in CQL but exposed
+	 * here as a list so the wire form (JSON) is the same as the
+	 * in-memory shape. */
+	readonly supportedLanguages: readonly string[];
+	readonly supportedContent: readonly string[];
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -320,8 +323,8 @@ export interface RerankingServiceRecord extends ServiceEndpointConfig {
 	readonly scoreNormalized: boolean | null;
 	readonly returnScores: boolean | null;
 	readonly maxBatchSize: number | null;
-	readonly supportedLanguages: ReadonlySet<string>;
-	readonly supportedContent: ReadonlySet<string>;
+	readonly supportedLanguages: readonly string[];
+	readonly supportedContent: readonly string[];
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -344,8 +347,8 @@ export interface LlmServiceRecord extends ServiceEndpointConfig {
 	readonly supportsStreaming: boolean | null;
 	readonly supportsTools: boolean | null;
 	readonly maxBatchSize: number | null;
-	readonly supportedLanguages: ReadonlySet<string>;
-	readonly supportedContent: ReadonlySet<string>;
+	readonly supportedLanguages: readonly string[];
+	readonly supportedContent: readonly string[];
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -366,7 +369,7 @@ export interface McpToolRecord {
 	readonly outputSchema: Readonly<Record<string, unknown>> | null;
 	readonly authType: AuthType;
 	readonly credentialRef: SecretRef | null;
-	readonly tags: ReadonlySet<string>;
+	readonly tags: readonly string[];
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -417,9 +420,9 @@ export interface AgentRecord {
 	readonly description: string | null;
 	readonly systemPrompt: string | null;
 	readonly userPrompt: string | null;
-	readonly toolIds: ReadonlySet<string>;
+	readonly toolIds: readonly string[];
 	readonly ragEnabled: boolean;
-	readonly knowledgeBaseIds: ReadonlySet<string>;
+	readonly knowledgeBaseIds: readonly string[];
 	readonly ragMaxResults: number | null;
 	readonly ragMinScore: number | null;
 	readonly rerankEnabled: boolean;

@@ -562,6 +562,189 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		/* ============================================================== */
+		/* Knowledge-base schema (issue #98)                              */
+		/* ============================================================== */
+
+		test("creating a knowledge base validates referenced services exist", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Missing embedding service ⇒ 404.
+				await expect(
+					store.createKnowledgeBase(ws.uid, {
+						name: "kb",
+						embeddingServiceId: "00000000-0000-0000-0000-000000000001",
+						chunkingServiceId: "00000000-0000-0000-0000-000000000002",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("knowledge base CRUD round-trip with auto-provisioned vector collection", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "openai-3-small",
+					provider: "openai",
+					modelName: "text-embedding-3-small",
+					embeddingDimension: 1536,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "docling-default",
+					engine: "docling",
+				});
+				const rerank = await store.createRerankingService(ws.uid, {
+					name: "cohere-rerank-3",
+					provider: "cohere",
+					modelName: "rerank-english-v3.0",
+				});
+
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "products",
+					description: "product catalog",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+					rerankingServiceId: rerank.rerankingServiceId,
+					language: "en",
+				});
+
+				expect(kb.workspaceId).toBe(ws.uid);
+				expect(kb.embeddingServiceId).toBe(emb.embeddingServiceId);
+				expect(kb.chunkingServiceId).toBe(chunk.chunkingServiceId);
+				expect(kb.rerankingServiceId).toBe(rerank.rerankingServiceId);
+				// Auto-provisioned collection name follows the wb_vectors_<id>
+				// (hyphen-stripped) convention.
+				expect(kb.vectorCollection).toMatch(/^wb_vectors_[0-9a-f]+$/);
+				expect(kb.vectorCollection).not.toContain("-");
+				expect(kb.lexical.enabled).toBe(false);
+
+				const list = await store.listKnowledgeBases(ws.uid);
+				expect(list).toHaveLength(1);
+
+				// PATCH does not allow embeddingServiceId / chunkingServiceId
+				// (omitted from the input type, enforced at the type system).
+				// Reranker, language, status, lexical all swing freely.
+				const updated = await store.updateKnowledgeBase(
+					ws.uid,
+					kb.knowledgeBaseId,
+					{
+						rerankingServiceId: null,
+						language: "fr",
+						status: "draft",
+					},
+				);
+				expect(updated.rerankingServiceId).toBeNull();
+				expect(updated.language).toBe("fr");
+				expect(updated.status).toBe("draft");
+				expect(updated.embeddingServiceId).toBe(emb.embeddingServiceId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleting a service that a KB still references is a conflict", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "openai-3-small",
+					provider: "openai",
+					modelName: "text-embedding-3-small",
+					embeddingDimension: 1536,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "docling-default",
+					engine: "docling",
+				});
+				await store.createKnowledgeBase(ws.uid, {
+					name: "products",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+
+				await expect(
+					store.deleteEmbeddingService(ws.uid, emb.embeddingServiceId),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+				await expect(
+					store.deleteChunkingService(ws.uid, chunk.chunkingServiceId),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteWorkspace cascades to KBs and services", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				await store.createRerankingService(ws.uid, {
+					name: "r",
+					provider: "cohere",
+					modelName: "rerank",
+				});
+				await store.deleteWorkspace(ws.uid);
+
+				// Workspace is gone — listing on it throws.
+				await expect(store.listKnowledgeBases(ws.uid)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(
+					store.listChunkingServices(ws.uid),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.listEmbeddingServices(ws.uid),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.listRerankingServices(ws.uid),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("embedding service supportedLanguages round-trips deduped + sorted", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createEmbeddingService(ws.uid, {
+					name: "multi",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+					// Duplicates and unsorted; the store normalises both.
+					supportedLanguages: ["fr", "en", "es", "fr"],
+					supportedContent: ["text"],
+				});
+				expect(Array.isArray(created.supportedLanguages)).toBe(true);
+				expect(created.supportedLanguages).toEqual(["en", "es", "fr"]);
+				expect(created.supportedContent).toEqual(["text"]);
+
+				const reread = await store.getEmbeddingService(
+					ws.uid,
+					created.embeddingServiceId,
+				);
+				expect(reread).not.toBeNull();
+				expect(reread!.supportedLanguages).toContain("en");
+				expect(reread!.supportedLanguages).toHaveLength(3);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("touchApiKey bumps lastUsedAt", async () => {
 			const { store, cleanup } = await factory();
 			try {

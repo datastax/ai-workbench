@@ -7,12 +7,35 @@
 import { ControlPlaneConflictError } from "./errors.js";
 import type { UpdateVectorStoreInput } from "./store.js";
 import type {
+	AuthType,
+	DistanceMetric,
+	KnowledgeBaseStatus,
 	LexicalConfig,
 	RerankingConfig,
+	ServiceStatus,
 	VectorSimilarity,
 } from "./types.js";
 
 export const DEFAULT_SIMILARITY: VectorSimilarity = "cosine";
+
+/* ---- Knowledge-Base schema defaults (issue #98) ---- */
+
+export const DEFAULT_DISTANCE_METRIC: DistanceMetric = "cosine";
+export const DEFAULT_KB_STATUS: KnowledgeBaseStatus = "active";
+export const DEFAULT_SERVICE_STATUS: ServiceStatus = "active";
+export const DEFAULT_AUTH_TYPE: AuthType = "none";
+
+/**
+ * Build the auto-provisioned Astra collection name for a KB. The KB
+ * id (a UUID) maps 1:1 to a single physical collection — naming by id
+ * means renaming a KB never touches the data plane.
+ *
+ * Hyphens are stripped because Astra collection names must match
+ * `^[a-zA-Z][a-zA-Z0-9_]*$`.
+ */
+export function defaultVectorCollection(knowledgeBaseId: string): string {
+	return `wb_vectors_${knowledgeBaseId.replace(/-/g, "")}`;
+}
 
 export const DEFAULT_LEXICAL: LexicalConfig = Object.freeze({
 	enabled: false,

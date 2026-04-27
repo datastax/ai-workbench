@@ -16,14 +16,23 @@
 
 import type {
 	ApiKeyRecord,
+	AuthType,
 	CatalogRecord,
+	ChunkingServiceRecord,
+	DistanceMetric,
 	DocumentRecord,
 	DocumentStatus,
 	EmbeddingConfig,
+	EmbeddingServiceRecord,
+	KnowledgeBaseLanguage,
+	KnowledgeBaseRecord,
+	KnowledgeBaseStatus,
 	LexicalConfig,
 	RerankingConfig,
+	RerankingServiceRecord,
 	SavedQueryRecord,
 	SecretRef,
+	ServiceStatus,
 	VectorSimilarity,
 	VectorStoreRecord,
 	WorkspaceKind,
@@ -167,6 +176,119 @@ export interface UpdateVectorStoreInput {
 }
 
 /* ------------------------------------------------------------------ */
+/* Knowledge base (issue #98)                                         */
+/* ------------------------------------------------------------------ */
+
+export interface CreateKnowledgeBaseInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: KnowledgeBaseStatus;
+	readonly embeddingServiceId: string;
+	readonly chunkingServiceId: string;
+	readonly rerankingServiceId?: string | null;
+	readonly language?: KnowledgeBaseLanguage | null;
+	readonly lexical?: LexicalConfig;
+	/** Optional override for the auto-provisioned vector collection name.
+	 * If omitted the store generates `wb_vectors_<knowledge_base_id>`. */
+	readonly vectorCollection?: string | null;
+}
+
+/**
+ * Patch a Knowledge Base. `embeddingServiceId` and `chunkingServiceId`
+ * are intentionally absent — they're immutable after creation because
+ * existing vectors / chunks on disk are bound to the model that
+ * produced them. Re-embedding is a separate operation.
+ */
+export interface UpdateKnowledgeBaseInput {
+	readonly name?: string;
+	readonly description?: string | null;
+	readonly status?: KnowledgeBaseStatus;
+	readonly rerankingServiceId?: string | null;
+	readonly language?: KnowledgeBaseLanguage | null;
+	readonly lexical?: LexicalConfig;
+}
+
+/* ------------------------------------------------------------------ */
+/* Execution services (chunking, embedding, reranking)                */
+/* ------------------------------------------------------------------ */
+
+interface ServiceEndpointInput {
+	readonly endpointBaseUrl?: string | null;
+	readonly endpointPath?: string | null;
+	readonly requestTimeoutMs?: number | null;
+	readonly authType?: AuthType;
+	readonly credentialRef?: SecretRef | null;
+}
+
+export interface CreateChunkingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly engine: string;
+	readonly engineVersion?: string | null;
+	readonly strategy?: string | null;
+	readonly maxChunkSize?: number | null;
+	readonly minChunkSize?: number | null;
+	readonly chunkUnit?: string | null;
+	readonly overlapSize?: number | null;
+	readonly overlapUnit?: string | null;
+	readonly preserveStructure?: boolean | null;
+	readonly language?: string | null;
+	readonly maxPayloadSizeKb?: number | null;
+	readonly enableOcr?: boolean | null;
+	readonly extractTables?: boolean | null;
+	readonly extractFigures?: boolean | null;
+	readonly readingOrder?: string | null;
+}
+
+export type UpdateChunkingServiceInput = Partial<
+	Omit<CreateChunkingServiceInput, "uid">
+>;
+
+export interface CreateEmbeddingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly modelName: string;
+	readonly embeddingDimension: number;
+	readonly distanceMetric?: DistanceMetric;
+	readonly maxBatchSize?: number | null;
+	readonly maxInputTokens?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateEmbeddingServiceInput = Partial<
+	Omit<CreateEmbeddingServiceInput, "uid">
+>;
+
+export interface CreateRerankingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly engine?: string | null;
+	readonly modelName: string;
+	readonly modelVersion?: string | null;
+	readonly maxCandidates?: number | null;
+	readonly scoringStrategy?: string | null;
+	readonly scoreNormalized?: boolean | null;
+	readonly returnScores?: boolean | null;
+	readonly maxBatchSize?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateRerankingServiceInput = Partial<
+	Omit<CreateRerankingServiceInput, "uid">
+>;
+
+/* ------------------------------------------------------------------ */
 /* Store                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -291,6 +413,92 @@ export interface ControlPlaneStore {
 	findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null>;
 	/** Fire-and-forget bump of `lastUsedAt` after a successful verify. */
 	touchApiKey(workspace: string, keyId: string): Promise<void>;
+
+	/* Knowledge bases (issue #98) */
+	listKnowledgeBases(workspace: string): Promise<readonly KnowledgeBaseRecord[]>;
+	getKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<KnowledgeBaseRecord | null>;
+	createKnowledgeBase(
+		workspace: string,
+		input: CreateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord>;
+	updateKnowledgeBase(
+		workspace: string,
+		uid: string,
+		patch: UpdateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord>;
+	deleteKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Chunking services */
+	listChunkingServices(
+		workspace: string,
+	): Promise<readonly ChunkingServiceRecord[]>;
+	getChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<ChunkingServiceRecord | null>;
+	createChunkingService(
+		workspace: string,
+		input: CreateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord>;
+	updateChunkingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord>;
+	deleteChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Embedding services */
+	listEmbeddingServices(
+		workspace: string,
+	): Promise<readonly EmbeddingServiceRecord[]>;
+	getEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<EmbeddingServiceRecord | null>;
+	createEmbeddingService(
+		workspace: string,
+		input: CreateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord>;
+	updateEmbeddingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord>;
+	deleteEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Reranking services */
+	listRerankingServices(
+		workspace: string,
+	): Promise<readonly RerankingServiceRecord[]>;
+	getRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<RerankingServiceRecord | null>;
+	createRerankingService(
+		workspace: string,
+		input: CreateRerankingServiceInput,
+	): Promise<RerankingServiceRecord>;
+	updateRerankingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateRerankingServiceInput,
+	): Promise<RerankingServiceRecord>;
+	deleteRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
 
 	/** Optional: run migrations, open connections, etc. Idempotent. */
 	init?(): Promise<void>;

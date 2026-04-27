@@ -287,11 +287,18 @@ export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
 /*                                                                    */
 /* ================================================================== */
 
-function toReadonlySet<T>(value: Iterable<T> | null | undefined): Set<T> {
-	return new Set(value ?? []);
+/**
+ * Astra row → record: SET<T> arrives as a `Set<T>`; the application
+ * record exposes it as a sorted `readonly string[]` so JSON
+ * serialization roundtrips cleanly across every backend.
+ */
+function setToSortedArray(value: Iterable<string> | null | undefined): string[] {
+	return [...(value ?? [])].sort();
 }
 
-function fromReadonlySet<T>(value: ReadonlySet<T>): Set<T> {
+/** Record → Astra row: arrays go in as `Set<string>` so astra-db-ts
+ * encodes them as the underlying `SET<TEXT>` / `SET<UUID>` column. */
+function arrayToSet(value: readonly string[]): Set<string> {
 	return new Set(value);
 }
 
@@ -476,8 +483,8 @@ export function embeddingServiceToRow(
 		max_input_tokens: r.maxInputTokens,
 		auth_type: r.authType,
 		credential_ref: r.credentialRef,
-		supported_languages: fromReadonlySet(r.supportedLanguages),
-		supported_content: fromReadonlySet(r.supportedContent),
+		supported_languages: arrayToSet(r.supportedLanguages),
+		supported_content: arrayToSet(r.supportedContent),
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -503,8 +510,8 @@ export function embeddingServiceFromRow(
 		maxInputTokens: row.max_input_tokens,
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
-		supportedLanguages: toReadonlySet(row.supported_languages),
-		supportedContent: toReadonlySet(row.supported_content),
+		supportedLanguages: setToSortedArray(row.supported_languages),
+		supportedContent: setToSortedArray(row.supported_content),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -535,8 +542,8 @@ export function rerankingServiceToRow(
 		max_batch_size: r.maxBatchSize,
 		auth_type: r.authType,
 		credential_ref: r.credentialRef,
-		supported_languages: fromReadonlySet(r.supportedLanguages),
-		supported_content: fromReadonlySet(r.supportedContent),
+		supported_languages: arrayToSet(r.supportedLanguages),
+		supported_content: arrayToSet(r.supportedContent),
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -565,8 +572,8 @@ export function rerankingServiceFromRow(
 		maxBatchSize: row.max_batch_size,
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
-		supportedLanguages: toReadonlySet(row.supported_languages),
-		supportedContent: toReadonlySet(row.supported_content),
+		supportedLanguages: setToSortedArray(row.supported_languages),
+		supportedContent: setToSortedArray(row.supported_content),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -597,8 +604,8 @@ export function llmServiceToRow(r: LlmServiceRecord): LlmServiceRow {
 		max_batch_size: r.maxBatchSize,
 		auth_type: r.authType,
 		credential_ref: r.credentialRef,
-		supported_languages: fromReadonlySet(r.supportedLanguages),
-		supported_content: fromReadonlySet(r.supportedContent),
+		supported_languages: arrayToSet(r.supportedLanguages),
+		supported_content: arrayToSet(r.supportedContent),
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -627,8 +634,8 @@ export function llmServiceFromRow(row: LlmServiceRow): LlmServiceRecord {
 		maxBatchSize: row.max_batch_size,
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
-		supportedLanguages: toReadonlySet(row.supported_languages),
-		supportedContent: toReadonlySet(row.supported_content),
+		supportedLanguages: setToSortedArray(row.supported_languages),
+		supportedContent: setToSortedArray(row.supported_content),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -650,7 +657,7 @@ export function mcpToolToRow(r: McpToolRecord): McpToolRow {
 		output_schema: r.outputSchema ? JSON.stringify(r.outputSchema) : null,
 		auth_type: r.authType,
 		credential_ref: r.credentialRef,
-		tags: fromReadonlySet(r.tags),
+		tags: arrayToSet(r.tags),
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -670,7 +677,7 @@ export function mcpToolFromRow(row: McpToolRow): McpToolRecord {
 		outputSchema: parseJsonObject(row.output_schema),
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
-		tags: toReadonlySet(row.tags),
+		tags: setToSortedArray(row.tags),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -774,9 +781,9 @@ export function agentToRow(r: AgentRecord): AgentRow {
 		description: r.description,
 		system_prompt: r.systemPrompt,
 		user_prompt: r.userPrompt,
-		tool_ids: fromReadonlySet(r.toolIds),
+		tool_ids: arrayToSet(r.toolIds),
 		rag_enabled: r.ragEnabled,
-		knowledge_base_ids: fromReadonlySet(r.knowledgeBaseIds),
+		knowledge_base_ids: arrayToSet(r.knowledgeBaseIds),
 		rag_max_results: r.ragMaxResults,
 		rag_min_score: r.ragMinScore,
 		rerank_enabled: r.rerankEnabled,
@@ -795,9 +802,9 @@ export function agentFromRow(row: AgentRow): AgentRecord {
 		description: row.description,
 		systemPrompt: row.system_prompt,
 		userPrompt: row.user_prompt,
-		toolIds: toReadonlySet(row.tool_ids),
+		toolIds: setToSortedArray(row.tool_ids),
 		ragEnabled: row.rag_enabled,
-		knowledgeBaseIds: toReadonlySet(row.knowledge_base_ids),
+		knowledgeBaseIds: setToSortedArray(row.knowledge_base_ids),
 		ragMaxResults: row.rag_max_results,
 		ragMinScore: row.rag_min_score,
 		rerankEnabled: row.rerank_enabled,
