@@ -14,6 +14,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -27,10 +28,17 @@ import {
 	UpdateKnowledgeBaseInputSchema,
 	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
+import { resolveKb } from "./kb-descriptor.js";
+
+export interface KnowledgeBaseRouteDeps {
+	readonly store: ControlPlaneStore;
+	readonly drivers: VectorStoreDriverRegistry;
+}
 
 export function knowledgeBaseRoutes(
-	store: ControlPlaneStore,
+	deps: KnowledgeBaseRouteDeps,
 ): OpenAPIHono<AppEnv> {
+	const { store, drivers } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -103,7 +111,26 @@ export function knowledgeBaseRoutes(
 			const { workspaceUid } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
+
+			// 1. Persist the KB row. Throws on conflict / missing service refs.
 			const record = await store.createKnowledgeBase(workspaceUid, body);
+
+			// 2. Provision the underlying vector collection. The driver
+			//    needs the descriptor shape, so we synthesise one — same
+			//    helper the data plane uses. On failure we roll back the
+			//    KB row so the control plane and data plane don't drift.
+			try {
+				const { workspace, descriptor } = await resolveKb(
+					store,
+					workspaceUid,
+					record.knowledgeBaseId,
+				);
+				const driver = drivers.for(workspace);
+				await driver.createCollection({ workspace, descriptor });
+			} catch (err) {
+				await store.deleteKnowledgeBase(workspaceUid, record.knowledgeBaseId);
+				throw err;
+			}
 			return c.json(record, 201);
 		},
 	);
@@ -219,6 +246,28 @@ export function knowledgeBaseRoutes(
 		async (c) => {
 			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceUid);
+
+			// Drop the underlying collection first; if the driver call
+			// fails the KB row survives so the operator can inspect.
+			// Mirrors the legacy /vector-stores delete semantics.
+			const existing = await store.getKnowledgeBase(
+				workspaceUid,
+				knowledgeBaseUid,
+			);
+			if (!existing) {
+				throw new ControlPlaneNotFoundError(
+					"knowledge base",
+					knowledgeBaseUid,
+				);
+			}
+			const { workspace, descriptor } = await resolveKb(
+				store,
+				workspaceUid,
+				knowledgeBaseUid,
+			);
+			const driver = drivers.for(workspace);
+			await driver.dropCollection({ workspace, descriptor });
+
 			const { deleted } = await store.deleteKnowledgeBase(
 				workspaceUid,
 				knowledgeBaseUid,

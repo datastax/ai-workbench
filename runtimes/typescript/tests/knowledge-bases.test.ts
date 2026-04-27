@@ -328,6 +328,88 @@ describe("knowledge-base routes", () => {
 		expect(conflict.status).toBe(409);
 	});
 
+	test("data plane: upsert + search round-trip on a KB-backed mock collection", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "mock-embedder",
+			provider: "mock",
+			modelName: "mock-embedder",
+			embeddingDimension: 4,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		const create = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "kb",
+					embeddingServiceId: embId,
+					chunkingServiceId: chunkId,
+				}),
+			},
+		);
+		const kb = await json(create);
+
+		// Upsert two records.
+		const upsert = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{ id: "a", text: "alpha bravo charlie", payload: { tag: "x" } },
+						{ id: "b", text: "delta echo foxtrot", payload: { tag: "y" } },
+					],
+				}),
+			},
+		);
+		expect(upsert.status, await upsert.clone().text()).toBe(200);
+		const upsertBody = await json(upsert);
+		expect(upsertBody.upserted).toBe(2);
+
+		// Vector search on the KB.
+		const search = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "alpha bravo charlie", topK: 1 }),
+			},
+		);
+		expect(search.status, await search.clone().text()).toBe(200);
+		const hits = await json(search);
+		expect(Array.isArray(hits)).toBe(true);
+		expect(hits[0]?.id).toBe("a");
+
+		// Delete a record.
+		const del = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}/records/a`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(200);
+		expect((await json(del)).deleted).toBe(true);
+	});
+
+	test("data plane: 404 for unknown KB", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${randomUUID()}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: [1, 0, 0, 0] }),
+			},
+		);
+		expect(res.status).toBe(404);
+	});
+
 	test("KB list paginates", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);

@@ -45,6 +45,7 @@ import { documentRoutes } from "./routes/api-v1/documents.js";
 import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { jobRoutes } from "./routes/api-v1/jobs.js";
+import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
@@ -191,10 +192,21 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// Knowledge-base schema routes (issue #98). Coexist with the legacy
 	// /catalogs and /vector-stores surface during phase 1b; phase 1c
 	// removes the legacy registrations once the UI cuts over.
-	app.route("/api/v1/workspaces", knowledgeBaseRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
+	);
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		kbDataPlaneRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+		}),
+	);
 
 	app.doc31("/api/v1/openapi.json", {
 		openapi: "3.1.0",
