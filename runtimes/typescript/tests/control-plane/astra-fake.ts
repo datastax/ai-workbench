@@ -41,7 +41,6 @@ import type {
 	RagDocumentByStatusRow,
 	RagDocumentRow,
 	RerankingServiceRow,
-	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
 } from "../../src/astra-client/row-types.js";
@@ -114,7 +113,6 @@ export function createFakeTablesBundle(): TablesBundle {
 		catalogs: new FakeTable<CatalogRow>(),
 		vectorStores: new FakeTable<VectorStoreRow>(),
 		documents: new FakeTable<DocumentRow>(),
-		savedQueries: new FakeTable<SavedQueryRow>(),
 		jobs: new FakeTable<JobRow>(),
 		apiKeys: new FakeTable<ApiKeyRow>(),
 		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(),

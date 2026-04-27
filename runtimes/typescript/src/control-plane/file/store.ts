@@ -47,7 +47,6 @@ import type {
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateRerankingServiceInput,
-	CreateSavedQueryInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
@@ -57,7 +56,6 @@ import type {
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateRerankingServiceInput,
-	UpdateSavedQueryInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
@@ -69,7 +67,6 @@ import type {
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	RerankingServiceRecord,
-	SavedQueryRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../types.js";
@@ -80,7 +77,6 @@ type Table =
 	| "catalogs"
 	| "vector-stores"
 	| "documents"
-	| "saved-queries"
 	| "api-keys"
 	// Knowledge-base schema (issue #98).
 	| "knowledge-bases"
@@ -93,7 +89,6 @@ const TABLE_FILES: Record<Table, string> = {
 	catalogs: "catalogs.json",
 	"vector-stores": "vector-stores.json",
 	documents: "documents.json",
-	"saved-queries": "saved-queries.json",
 	"api-keys": "api-keys.json",
 	"knowledge-bases": "knowledge-bases.json",
 	"chunking-services": "chunking-services.json",
@@ -118,7 +113,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		catalogs: new Mutex(),
 		"vector-stores": new Mutex(),
 		documents: new Mutex(),
-		"saved-queries": new Mutex(),
 		"api-keys": new Mutex(),
 		"knowledge-bases": new Mutex(),
 		"chunking-services": new Mutex(),
@@ -221,10 +215,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		}));
 		await this.mutate<"documents", null>("documents", (rows) => ({
 			rows: rows.filter((d) => d.workspace !== uid),
-			result: null,
-		}));
-		await this.mutate<"saved-queries", null>("saved-queries", (rows) => ({
-			rows: rows.filter((q) => q.workspace !== uid),
 			result: null,
 		}));
 		await this.mutate<"api-keys", null>("api-keys", (rows) => ({
@@ -362,12 +352,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		await this.mutate<"documents", null>("documents", (rows) => ({
 			rows: rows.filter(
 				(d) => !(d.workspace === workspace && d.catalogUid === uid),
-			),
-			result: null,
-		}));
-		await this.mutate<"saved-queries", null>("saved-queries", (rows) => ({
-			rows: rows.filter(
-				(q) => !(q.workspace === workspace && q.catalogUid === uid),
 			),
 			result: null,
 		}));
@@ -603,141 +587,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 							d.workspace === workspace &&
 							d.catalogUid === catalog &&
 							d.documentUid === uid
-						),
-				);
-				return {
-					rows: next,
-					result: { deleted: next.length !== rows.length },
-				};
-			},
-		);
-	}
-
-	/* ---------------- Saved queries ---------------- */
-
-	async listSavedQueries(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly SavedQueryRecord[]> {
-		await this.assertCatalog(workspace, catalog);
-		const all = await this.readAll<SavedQueryRecord>("saved-queries");
-		return all.filter(
-			(q) => q.workspace === workspace && q.catalogUid === catalog,
-		);
-	}
-
-	async getSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<SavedQueryRecord | null> {
-		await this.assertCatalog(workspace, catalog);
-		const all = await this.readAll<SavedQueryRecord>("saved-queries");
-		return (
-			all.find(
-				(q) =>
-					q.workspace === workspace &&
-					q.catalogUid === catalog &&
-					q.queryUid === uid,
-			) ?? null
-		);
-	}
-
-	async createSavedQuery(
-		workspace: string,
-		catalog: string,
-		input: CreateSavedQueryInput,
-	): Promise<SavedQueryRecord> {
-		await this.assertCatalog(workspace, catalog);
-		return this.mutate<"saved-queries", SavedQueryRecord>(
-			"saved-queries",
-			(rows) => {
-				const uid = input.uid ?? randomUUID();
-				if (
-					rows.some(
-						(q) =>
-							q.workspace === workspace &&
-							q.catalogUid === catalog &&
-							q.queryUid === uid,
-					)
-				) {
-					throw new ControlPlaneConflictError(
-						`saved query with uid '${uid}' already exists in catalog '${catalog}'`,
-					);
-				}
-				const now = nowIso();
-				const record: SavedQueryRecord = {
-					workspace,
-					catalogUid: catalog,
-					queryUid: uid,
-					name: input.name,
-					description: input.description ?? null,
-					text: input.text,
-					topK: input.topK ?? null,
-					filter: input.filter ? { ...input.filter } : null,
-					createdAt: now,
-					updatedAt: now,
-				};
-				return { rows: [...rows, record], result: record };
-			},
-		);
-	}
-
-	async updateSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateSavedQueryInput,
-	): Promise<SavedQueryRecord> {
-		await this.assertCatalog(workspace, catalog);
-		return this.mutate<"saved-queries", SavedQueryRecord>(
-			"saved-queries",
-			(rows) => {
-				const idx = rows.findIndex(
-					(q) =>
-						q.workspace === workspace &&
-						q.catalogUid === catalog &&
-						q.queryUid === uid,
-				);
-				if (idx < 0) {
-					throw new ControlPlaneNotFoundError("saved query", uid);
-				}
-				const existing = rows[idx] as SavedQueryRecord;
-				const next: SavedQueryRecord = {
-					...existing,
-					...(patch.name !== undefined && { name: patch.name }),
-					...(patch.description !== undefined && {
-						description: patch.description,
-					}),
-					...(patch.text !== undefined && { text: patch.text }),
-					...(patch.topK !== undefined && { topK: patch.topK }),
-					...(patch.filter !== undefined && {
-						filter: patch.filter ? { ...patch.filter } : null,
-					}),
-					updatedAt: nowIso(),
-				};
-				const nextRows = [...rows];
-				nextRows[idx] = next;
-				return { rows: nextRows, result: next };
-			},
-		);
-	}
-
-	async deleteSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }> {
-		await this.assertCatalog(workspace, catalog);
-		return this.mutate<"saved-queries", { deleted: boolean }>(
-			"saved-queries",
-			(rows) => {
-				const next = rows.filter(
-					(q) =>
-						!(
-							q.workspace === workspace &&
-							q.catalogUid === catalog &&
-							q.queryUid === uid
 						),
 				);
 				return {
@@ -1524,16 +1373,14 @@ type TableRow<K extends Table> = K extends "workspaces"
 			? VectorStoreRecord
 			: K extends "documents"
 				? DocumentRecord
-				: K extends "saved-queries"
-					? SavedQueryRecord
-					: K extends "api-keys"
-						? ApiKeyRecord
-						: K extends "knowledge-bases"
-							? KnowledgeBaseRecord
-							: K extends "chunking-services"
-								? ChunkingServiceRecord
-								: K extends "embedding-services"
-									? EmbeddingServiceRecord
-									: K extends "reranking-services"
-										? RerankingServiceRecord
-										: never;
+				: K extends "api-keys"
+					? ApiKeyRecord
+					: K extends "knowledge-bases"
+						? KnowledgeBaseRecord
+						: K extends "chunking-services"
+							? ChunkingServiceRecord
+							: K extends "embedding-services"
+								? EmbeddingServiceRecord
+								: K extends "reranking-services"
+									? RerankingServiceRecord
+									: never;

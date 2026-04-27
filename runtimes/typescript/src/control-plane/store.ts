@@ -30,7 +30,6 @@ import type {
 	LexicalConfig,
 	RerankingConfig,
 	RerankingServiceRecord,
-	SavedQueryRecord,
 	SecretRef,
 	ServiceStatus,
 	VectorSimilarity,
@@ -112,27 +111,6 @@ export interface UpdateDocumentInput {
 	readonly status?: DocumentStatus;
 	readonly errorMessage?: string | null;
 	readonly metadata?: Readonly<Record<string, string>>;
-}
-
-/* ------------------------------------------------------------------ */
-/* Saved query                                                        */
-/* ------------------------------------------------------------------ */
-
-export interface CreateSavedQueryInput {
-	readonly uid?: string;
-	readonly name: string;
-	readonly description?: string | null;
-	readonly text: string;
-	readonly topK?: number | null;
-	readonly filter?: Readonly<Record<string, unknown>> | null;
-}
-
-export interface UpdateSavedQueryInput {
-	readonly name?: string;
-	readonly description?: string | null;
-	readonly text?: string;
-	readonly topK?: number | null;
-	readonly filter?: Readonly<Record<string, unknown>> | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -364,33 +342,6 @@ export interface ControlPlaneStore {
 		patch: UpdateDocumentInput,
 	): Promise<DocumentRecord>;
 	deleteDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
-
-	/* Saved queries */
-	listSavedQueries(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly SavedQueryRecord[]>;
-	getSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<SavedQueryRecord | null>;
-	createSavedQuery(
-		workspace: string,
-		catalog: string,
-		input: CreateSavedQueryInput,
-	): Promise<SavedQueryRecord>;
-	updateSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateSavedQueryInput,
-	): Promise<SavedQueryRecord>;
-	deleteSavedQuery(
 		workspace: string,
 		catalog: string,
 		uid: string,

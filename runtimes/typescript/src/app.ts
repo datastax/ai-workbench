@@ -47,7 +47,6 @@ import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { jobRoutes } from "./routes/api-v1/jobs.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
-import { savedQueryRoutes } from "./routes/api-v1/saved-queries.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
@@ -180,14 +179,6 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		}),
 	);
 	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
-	app.route(
-		"/api/v1/workspaces",
-		savedQueryRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
-		}),
-	);
 	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",

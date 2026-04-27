@@ -104,22 +104,6 @@ export interface DocumentRow {
 	metadata: Record<string, string>;
 }
 
-export interface SavedQueryRow {
-	workspace: Uuid;
-	catalog_uid: Uuid;
-	query_uid: Uuid;
-	name: string;
-	description: string | null;
-	text: string;
-	top_k: number | null;
-	/** Serialized `Record<string, unknown>`. The Data API Tables column
-	 * type is `text` so arbitrary JSON survives a round-trip; converters
-	 * parse/stringify on the boundary. */
-	filter_json: string | null;
-	created_at: Iso;
-	updated_at: Iso;
-}
-
 /* ================================================================== */
 /* Knowledge-Base schema row shapes (issue #98) — additive in 1a.     */
 /* ================================================================== */

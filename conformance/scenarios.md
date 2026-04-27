@@ -174,20 +174,7 @@ happens to observe the worker, so the fixture would be flaky.
 Runtime-specific tests cover the lifecycle with polling.
 ---
 
-## Scenario 13 — `catalog-saved-queries`
-
-Saved-query CRUD under a catalog. Pins the wire shapes every runtime
-must produce on create/list/update/delete plus the post-delete 404
-(`saved_query_not_found`). `/run` semantics (replaying a saved query
-through catalog-scoped search, with the catalog UID always winning
-over the saved filter) stay in runtime tests — they depend on
-embedding providers that aren't portable across runtimes.
-
-Fixture: `fixtures/catalog-saved-queries.json`.
-
----
-
-## Scenario 14 — `vector-store-text-dispatch-mock`
+## Scenario 13 — `vector-store-text-dispatch-mock`
 
 Driver-native text dispatch on `POST /vector-stores/{vs}/search`.
 With a `mock` workspace + `embedding.provider: "mock"`, the runtime
