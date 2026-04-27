@@ -19,11 +19,24 @@ import type {
 	TableUpdateFilter,
 } from "@datastax/astra-db-ts";
 import type {
+	AgentRow,
 	ApiKeyLookupRow,
 	ApiKeyRow,
 	CatalogRow,
+	ChunkingServiceRow,
+	ConfigWorkspaceRow,
+	ConversationRow,
 	DocumentRow,
+	EmbeddingServiceRow,
 	JobRow,
+	KnowledgeBaseRow,
+	LlmServiceRow,
+	McpToolRow,
+	MessageRow,
+	RagDocumentByContentHashRow,
+	RagDocumentByStatusRow,
+	RagDocumentRow,
+	RerankingServiceRow,
 	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
@@ -58,4 +71,18 @@ export interface TablesBundle {
 	readonly jobs: TableLike<JobRow>;
 	readonly apiKeys: TableLike<ApiKeyRow>;
 	readonly apiKeyLookup: TableLike<ApiKeyLookupRow>;
+	/* ---- knowledge-base schema (issue #98), additive in phase 1a ---- */
+	readonly configWorkspaces: TableLike<ConfigWorkspaceRow>;
+	readonly knowledgeBases: TableLike<KnowledgeBaseRow>;
+	readonly chunkingServices: TableLike<ChunkingServiceRow>;
+	readonly embeddingServices: TableLike<EmbeddingServiceRow>;
+	readonly rerankingServices: TableLike<RerankingServiceRow>;
+	readonly llmServices: TableLike<LlmServiceRow>;
+	readonly mcpTools: TableLike<McpToolRow>;
+	readonly ragDocuments: TableLike<RagDocumentRow>;
+	readonly ragDocumentsByStatus: TableLike<RagDocumentByStatusRow>;
+	readonly ragDocumentsByHash: TableLike<RagDocumentByContentHashRow>;
+	readonly agents: TableLike<AgentRow>;
+	readonly conversations: TableLike<ConversationRow>;
+	readonly messages: TableLike<MessageRow>;
 }

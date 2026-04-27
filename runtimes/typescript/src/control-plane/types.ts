@@ -186,3 +186,278 @@ export interface VectorStoreRecord {
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
+
+/* ================================================================== */
+/*                                                                    */
+/* Knowledge-Base records (issue #98) — additive in phase 1a.         */
+/*                                                                    */
+/* Mirror the new `wb_config_*` / `wb_rag_*` / `wb_agentic_*` tables  */
+/* in camelCase. Phase 1b switches the routes to these; phase 1c      */
+/* removes the legacy types above.                                    */
+/*                                                                    */
+/* ================================================================== */
+
+/** Lifecycle of an execution service (chunking / embedding / reranking / LLM). */
+export type ServiceStatus = "active" | "deprecated" | "experimental";
+
+/** Lifecycle of a Knowledge Base. */
+export type KnowledgeBaseStatus = "active" | "draft" | "deprecated";
+
+/** Distance metric used by an embedding service / vector collection. */
+export type DistanceMetric = "cosine" | "dot" | "euclidean";
+
+/** Authentication scheme for a service endpoint. */
+export type AuthType = "none" | "api_key" | "oauth2" | "mTLS";
+
+/** Three-letter language hint for a Knowledge Base. */
+export type KnowledgeBaseLanguage = "en" | "fr" | "multi" | (string & {});
+
+/** Speaker role on an agent message. */
+export type AgentRole = "user" | "agent" | "tool" | "system";
+
+/** A workspace under the new schema (replaces `WorkspaceRecord`). */
+export interface ConfigWorkspaceRecord {
+	readonly uid: string;
+	readonly name: string;
+	/** Data-plane URL or {@link SecretRef}. Same semantics as the legacy
+	 * `WorkspaceRecord.endpoint`, now spelled `url`. */
+	readonly url: string | null;
+	readonly kind: WorkspaceKind;
+	/** Astra/HCD namespace (the legacy field was `keyspace`). */
+	readonly namespace: string | null;
+	/** Map of credential name → secret ref. Never holds raw secrets. */
+	readonly credentials: Readonly<Record<string, SecretRef>>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** A Knowledge Base — replaces `CatalogRecord` + (most of) `VectorStoreRecord`. */
+export interface KnowledgeBaseRecord {
+	readonly workspaceId: string;
+	readonly knowledgeBaseId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly status: KnowledgeBaseStatus;
+	readonly embeddingServiceId: string;
+	readonly chunkingServiceId: string;
+	readonly rerankingServiceId: string | null;
+	readonly language: KnowledgeBaseLanguage | null;
+	/** Auto-provisioned Astra collection name backing this KB. Set on
+	 * create from the bound embedding service's dimension/metric;
+	 * surfaced read-only to callers. */
+	readonly vectorCollection: string | null;
+	readonly lexical: LexicalConfig;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+interface ServiceEndpointConfig {
+	readonly endpointBaseUrl: string | null;
+	readonly endpointPath: string | null;
+	readonly requestTimeoutMs: number | null;
+	readonly authType: AuthType;
+	readonly credentialRef: SecretRef | null;
+}
+
+/** A chunking executor — describes *how* to call a chunking engine. */
+export interface ChunkingServiceRecord extends ServiceEndpointConfig {
+	readonly workspaceId: string;
+	readonly chunkingServiceId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly status: ServiceStatus;
+	readonly engine: string;
+	readonly engineVersion: string | null;
+	readonly strategy: string | null;
+	readonly maxChunkSize: number | null;
+	readonly minChunkSize: number | null;
+	readonly chunkUnit: string | null;
+	readonly overlapSize: number | null;
+	readonly overlapUnit: string | null;
+	readonly preserveStructure: boolean | null;
+	readonly language: string | null;
+	readonly maxPayloadSizeKb: number | null;
+	readonly enableOcr: boolean | null;
+	readonly extractTables: boolean | null;
+	readonly extractFigures: boolean | null;
+	readonly readingOrder: string | null;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** An embedding executor — describes *how* to call an embedding model. */
+export interface EmbeddingServiceRecord extends ServiceEndpointConfig {
+	readonly workspaceId: string;
+	readonly embeddingServiceId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly status: ServiceStatus;
+	readonly provider: string;
+	readonly modelName: string;
+	readonly embeddingDimension: number;
+	readonly distanceMetric: DistanceMetric;
+	readonly maxBatchSize: number | null;
+	readonly maxInputTokens: number | null;
+	readonly supportedLanguages: ReadonlySet<string>;
+	readonly supportedContent: ReadonlySet<string>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** A reranking executor — describes *how* to call a reranking model. */
+export interface RerankingServiceRecord extends ServiceEndpointConfig {
+	readonly workspaceId: string;
+	readonly rerankingServiceId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly status: ServiceStatus;
+	readonly provider: string;
+	readonly engine: string | null;
+	readonly modelName: string;
+	readonly modelVersion: string | null;
+	readonly maxCandidates: number | null;
+	readonly scoringStrategy: string | null;
+	readonly scoreNormalized: boolean | null;
+	readonly returnScores: boolean | null;
+	readonly maxBatchSize: number | null;
+	readonly supportedLanguages: ReadonlySet<string>;
+	readonly supportedContent: ReadonlySet<string>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** An LLM executor — describes *how* to call a chat/generation model. */
+export interface LlmServiceRecord extends ServiceEndpointConfig {
+	readonly workspaceId: string;
+	readonly llmServiceId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly status: ServiceStatus;
+	readonly provider: string;
+	readonly engine: string | null;
+	readonly modelName: string;
+	readonly modelVersion: string | null;
+	readonly contextWindowTokens: number | null;
+	readonly maxOutputTokens: number | null;
+	readonly temperatureMin: number | null;
+	readonly temperatureMax: number | null;
+	readonly supportsStreaming: boolean | null;
+	readonly supportsTools: boolean | null;
+	readonly maxBatchSize: number | null;
+	readonly supportedLanguages: ReadonlySet<string>;
+	readonly supportedContent: ReadonlySet<string>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** A tool an agent may invoke — MCP, plain HTTP, builtin, or function. */
+export interface McpToolRecord {
+	readonly workspaceId: string;
+	readonly toolId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly toolType: string;
+	readonly endpointBaseUrl: string | null;
+	readonly endpointPath: string | null;
+	readonly httpMethod: string | null;
+	/** JSON-Schema as a record, deserialized by the converter. */
+	readonly inputSchema: Readonly<Record<string, unknown>> | null;
+	/** JSON-Schema as a record, deserialized by the converter. */
+	readonly outputSchema: Readonly<Record<string, unknown>> | null;
+	readonly authType: AuthType;
+	readonly credentialRef: SecretRef | null;
+	readonly tags: ReadonlySet<string>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** Document under the new schema. Replaces `DocumentRecord`. */
+export interface RagDocumentRecord {
+	readonly workspaceId: string;
+	readonly knowledgeBaseId: string;
+	readonly documentId: string;
+	readonly sourceDocId: string | null;
+	readonly sourceFilename: string | null;
+	readonly fileType: string | null;
+	readonly fileSize: number | null;
+	/** Content hash (was `md5Hash`). Algorithm is implementation-defined
+	 * but the value is opaque and used for dedup only. */
+	readonly contentHash: string | null;
+	readonly chunkTotal: number | null;
+	readonly status: DocumentStatus;
+	readonly errorMessage: string | null;
+	readonly ingestedAt: string | null;
+	readonly updatedAt: string;
+	readonly metadata: Readonly<Record<string, string>>;
+}
+
+/** Index row in `wb_rag_documents_by_knowledge_base_and_status`. */
+export interface RagDocumentStatusEntry {
+	readonly workspaceId: string;
+	readonly knowledgeBaseId: string;
+	readonly status: DocumentStatus;
+	readonly documentId: string;
+	readonly sourceFilename: string | null;
+	readonly ingestedAt: string | null;
+}
+
+/** Index row in `wb_rag_documents_by_content_hash`. */
+export interface RagDocumentHashEntry {
+	readonly contentHash: string;
+	readonly workspaceId: string;
+	readonly knowledgeBaseId: string;
+	readonly documentId: string;
+}
+
+/** An agent — orchestrates LLM + tools + KBs. */
+export interface AgentRecord {
+	readonly workspaceId: string;
+	readonly agentId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly systemPrompt: string | null;
+	readonly userPrompt: string | null;
+	readonly toolIds: ReadonlySet<string>;
+	readonly ragEnabled: boolean;
+	readonly knowledgeBaseIds: ReadonlySet<string>;
+	readonly ragMaxResults: number | null;
+	readonly ragMinScore: number | null;
+	readonly rerankEnabled: boolean;
+	/** Agent-level reranking override. When set, takes precedence over
+	 * the KB-level `rerankingServiceId` (gap #3 resolution). */
+	readonly rerankingServiceId: string | null;
+	readonly rerankMaxResults: number | null;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** A conversation between a user and an agent. */
+export interface ConversationRecord {
+	readonly workspaceId: string;
+	readonly agentId: string;
+	readonly conversationId: string;
+	readonly createdAt: string;
+	readonly title: string | null;
+}
+
+/** A single message in a conversation. */
+export interface MessageRecord {
+	readonly workspaceId: string;
+	readonly conversationId: string;
+	readonly messageTs: string;
+	readonly messageId: string;
+	readonly role: AgentRole;
+	readonly authorId: string | null;
+	readonly content: string | null;
+	readonly toolId: string | null;
+	/** Tool-call arguments, parsed from JSON. */
+	readonly toolCallPayload: Readonly<Record<string, unknown>> | null;
+	/** Tool response, parsed from JSON. */
+	readonly toolResponse: Readonly<Record<string, unknown>> | null;
+	readonly tokenCount: number | null;
+	readonly metadata: Readonly<Record<string, string>>;
+}
+
+/* ================================================================== */
+/* End knowledge-base records.                                        */
+/* ================================================================== */
