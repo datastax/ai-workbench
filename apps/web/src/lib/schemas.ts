@@ -213,9 +213,7 @@ export const ChunkingServiceRecordSchema = z.object({
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
-export type ChunkingServiceRecord = z.infer<
-	typeof ChunkingServiceRecordSchema
->;
+export type ChunkingServiceRecord = z.infer<typeof ChunkingServiceRecordSchema>;
 export const ChunkingServicePageSchema = paginatedSchema(
 	ChunkingServiceRecordSchema,
 );
@@ -401,9 +399,7 @@ export const KbAsyncIngestResponseSchema = z.object({
 	job: JobRecordSchema,
 	document: RagDocumentRecordSchema,
 });
-export type KbAsyncIngestResponse = z.infer<
-	typeof KbAsyncIngestResponseSchema
->;
+export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",

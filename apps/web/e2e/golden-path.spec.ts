@@ -48,30 +48,43 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	//    API. The UI flow for these is a multi-dialog walk that's
 	//    covered by component-level tests; here we just need a
 	//    KB to query against.
-	const emb = await request
-		.post(`/api/v1/workspaces/${workspaceUid}/embedding-services`, {
+	const embRes = await request.post(
+		`/api/v1/workspaces/${workspaceUid}/embedding-services`,
+		{
 			data: {
 				name: "mock-embedder",
 				provider: "mock",
 				modelName: "mock-embedder",
 				embeddingDimension: 4,
 			},
-		})
-		.then((r) => r.json());
-	const chunk = await request
-		.post(`/api/v1/workspaces/${workspaceUid}/chunking-services`, {
-			data: { name: "default-chunker", engine: "docling" },
-		})
-		.then((r) => r.json());
-	const kb = await request
-		.post(`/api/v1/workspaces/${workspaceUid}/knowledge-bases`, {
+		},
+	);
+	expect(embRes.ok(), `embedding-service create: ${await embRes.text()}`).toBe(
+		true,
+	);
+	const emb = await embRes.json();
+
+	const chunkRes = await request.post(
+		`/api/v1/workspaces/${workspaceUid}/chunking-services`,
+		{ data: { name: "default-chunker", engine: "docling" } },
+	);
+	expect(chunkRes.ok(), `chunking-service create: ${await chunkRes.text()}`).toBe(
+		true,
+	);
+	const chunk = await chunkRes.json();
+
+	const kbRes = await request.post(
+		`/api/v1/workspaces/${workspaceUid}/knowledge-bases`,
+		{
 			data: {
 				name: "kb",
 				embeddingServiceId: emb.embeddingServiceId,
 				chunkingServiceId: chunk.chunkingServiceId,
 			},
-		})
-		.then((r) => r.json());
+		},
+	);
+	expect(kbRes.ok(), `knowledge-base create: ${await kbRes.text()}`).toBe(true);
+	const kb = await kbRes.json();
 	const knowledgeBaseUid = kb.knowledgeBaseId as string;
 
 	// 6. Drop straight to the data-plane upsert endpoint — direct
@@ -93,8 +106,14 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(upsert.ok()).toBe(true);
 
-	// 7. Navigate to playground.
-	await page.getByRole("link", { name: "Playground", exact: true }).click();
+	// 7. Navigate to playground via a fresh load. We deliberately use
+	//    `page.goto` instead of clicking the nav link: the React Query
+	//    cache from WorkspaceDetailPage already populated
+	//    `useKnowledgeBases(workspaceUid)` with an empty list (the
+	//    services + KB were created via the `request` fixture, which is
+	//    invisible to the page). A SPA-style nav would read stale data;
+	//    a hard load remounts the cache.
+	await page.goto("/playground");
 	await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
 
 	// 8. Pick workspace + KB from the two Radix selects.

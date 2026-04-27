@@ -17,9 +17,7 @@ describe("QueryForm", () => {
 	it("submits a text query with a parsed filter", async () => {
 		const onRun = vi.fn();
 		const user = userEvent.setup();
-		render(
-			<QueryForm target={makeTarget()} onRun={onRun} pending={false} />,
-		);
+		render(<QueryForm target={makeTarget()} onRun={onRun} pending={false} />);
 
 		await user.type(screen.getByLabelText(/Query/), "blue sweater");
 		fireEvent.change(screen.getByLabelText(/Filter/), {
@@ -38,9 +36,7 @@ describe("QueryForm", () => {
 	it("rejects an empty text query inline without calling onRun", async () => {
 		const onRun = vi.fn();
 		const user = userEvent.setup();
-		render(
-			<QueryForm target={makeTarget()} onRun={onRun} pending={false} />,
-		);
+		render(<QueryForm target={makeTarget()} onRun={onRun} pending={false} />);
 
 		await user.click(screen.getByRole("button", { name: /Run query/ }));
 

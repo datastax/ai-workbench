@@ -175,10 +175,7 @@ function WorkspaceKbSelect({
 						</SelectTrigger>
 						<SelectContent>
 							{knowledgeBases.map((kb) => (
-								<SelectItem
-									key={kb.knowledgeBaseId}
-									value={kb.knowledgeBaseId}
-								>
+								<SelectItem key={kb.knowledgeBaseId} value={kb.knowledgeBaseId}>
 									{kb.name}{" "}
 									<span className="text-xs text-slate-500 font-mono ml-1">
 										{kb.status}
@@ -275,9 +272,7 @@ function SearchPanel({
 	}
 
 	if (!embedding) {
-		return (
-			<LoadingState label="Loading KB's embedding service…" />
-		);
+		return <LoadingState label="Loading KB's embedding service…" />;
 	}
 
 	return (

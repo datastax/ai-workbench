@@ -280,7 +280,9 @@ export interface ControlPlaneStore {
 	): Promise<{ deleted: boolean }>;
 
 	/* Knowledge bases (issue #98) */
-	listKnowledgeBases(workspace: string): Promise<readonly KnowledgeBaseRecord[]>;
+	listKnowledgeBases(
+		workspace: string,
+	): Promise<readonly KnowledgeBaseRecord[]>;
 	getKnowledgeBase(
 		workspace: string,
 		uid: string,

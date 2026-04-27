@@ -1,132 +1,132 @@
 [
-  {
-    "slug": "workspace-crud-basic",
-    "description": "Minimum viable workspace lifecycle.",
-    "steps": [
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces",
-        "body": {
-          "name": "prod",
-          "kind": "astra"
-        }
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces"
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces/$1.uid"
-      },
-      {
-        "method": "PUT",
-        "path": "/api/v1/workspaces/$1.uid",
-        "body": {
-          "name": "production"
-        }
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/v1/workspaces/$1.uid"
-      }
-    ]
-  },
-  {
-    "slug": "workspace-kind-is-immutable",
-    "description": "`PUT /workspaces/{uid}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
-    "steps": [
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces",
-        "body": {
-          "name": "w",
-          "kind": "astra"
-        }
-      },
-      {
-        "method": "PUT",
-        "path": "/api/v1/workspaces/$1.uid",
-        "body": {
-          "kind": "mock"
-        }
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces/$1.uid"
-      }
-    ]
-  },
-  {
-    "slug": "workspace-credentials-must-be-secret-ref",
-    "description": "`credentialsRef` values must match `<provider>:<path>` (e.g. `env:ASTRA_TOKEN`). A raw token value is rejected with 400 validation_error — it never reaches the SecretResolver.",
-    "steps": [
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces",
-        "body": {
-          "name": "w",
-          "kind": "astra",
-          "credentialsRef": {
-            "token": "raw-token-here"
-          }
-        }
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces"
-      }
-    ]
-  },
-  {
-    "slug": "workspace-test-connection-mock",
-    "description": "`POST /workspaces/{uid}/test-connection` on a mock workspace always reports ok: true. Pins the response shape (ok, kind, details) so every runtime implements the probe identically. Kinds that resolve credentials via SecretResolver are environment-dependent and aren't in the conformance corpus.",
-    "steps": [
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces",
-        "body": {
-          "name": "w",
-          "kind": "mock"
-        }
-      },
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces/$1.uid/test-connection"
-      }
-    ]
-  },
-  {
-    "slug": "workspace-api-key-lifecycle",
-    "description": "Full API-key CRUD: issue (plaintext shown once, hash never exposed) → list → revoke (soft-revoke, row stays) → list (revokedAt populated). Pins the `plaintext + key` envelope on POST and the stripped-hash shape on GET.",
-    "steps": [
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces",
-        "body": {
-          "name": "w",
-          "kind": "mock"
-        }
-      },
-      {
-        "method": "POST",
-        "path": "/api/v1/workspaces/$1.uid/api-keys",
-        "body": {
-          "label": "ci"
-        }
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces/$1.uid/api-keys"
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/v1/workspaces/$1.uid/api-keys/$2.key.keyId"
-      },
-      {
-        "method": "GET",
-        "path": "/api/v1/workspaces/$1.uid/api-keys"
-      }
-    ]
-  }
+	{
+		"slug": "workspace-crud-basic",
+		"description": "Minimum viable workspace lifecycle.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "prod",
+					"kind": "astra"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid"
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid",
+				"body": {
+					"name": "production"
+				}
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid"
+			}
+		]
+	},
+	{
+		"slug": "workspace-kind-is-immutable",
+		"description": "`PUT /workspaces/{uid}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "astra"
+				}
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid",
+				"body": {
+					"kind": "mock"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid"
+			}
+		]
+	},
+	{
+		"slug": "workspace-credentials-must-be-secret-ref",
+		"description": "`credentialsRef` values must match `<provider>:<path>` (e.g. `env:ASTRA_TOKEN`). A raw token value is rejected with 400 validation_error — it never reaches the SecretResolver.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "astra",
+					"credentialsRef": {
+						"token": "raw-token-here"
+					}
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces"
+			}
+		]
+	},
+	{
+		"slug": "workspace-test-connection-mock",
+		"description": "`POST /workspaces/{uid}/test-connection` on a mock workspace always reports ok: true. Pins the response shape (ok, kind, details) so every runtime implements the probe identically. Kinds that resolve credentials via SecretResolver are environment-dependent and aren't in the conformance corpus.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "mock"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/test-connection"
+			}
+		]
+	},
+	{
+		"slug": "workspace-api-key-lifecycle",
+		"description": "Full API-key CRUD: issue (plaintext shown once, hash never exposed) → list → revoke (soft-revoke, row stays) → list (revokedAt populated). Pins the `plaintext + key` envelope on POST and the stripped-hash shape on GET.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "mock"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/api-keys",
+				"body": {
+					"label": "ci"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/api-keys"
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/api-keys/$2.key.keyId"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/api-keys"
+			}
+		]
+	}
 ]

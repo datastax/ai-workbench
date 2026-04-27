@@ -106,7 +106,7 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 		return;
 	}
 
-	let resolved;
+	let resolved: Awaited<ReturnType<typeof resolveKb>>;
 	try {
 		resolved = await resolveKb(store, workspaceUid, job.knowledgeBaseUid);
 	} catch (err) {

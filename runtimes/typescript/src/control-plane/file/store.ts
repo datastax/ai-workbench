@@ -361,8 +361,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				const uid = input.uid ?? randomUUID();
 				if (
 					rows.some(
-						(kb) =>
-							kb.workspaceId === workspace && kb.knowledgeBaseId === uid,
+						(kb) => kb.workspaceId === workspace && kb.knowledgeBaseId === uid,
 					)
 				) {
 					throw new ControlPlaneConflictError(
@@ -407,8 +406,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"knowledge-bases",
 			(rows) => {
 				const idx = rows.findIndex(
-					(kb) =>
-						kb.workspaceId === workspace && kb.knowledgeBaseId === uid,
+					(kb) => kb.workspaceId === workspace && kb.knowledgeBaseId === uid,
 				);
 				if (idx < 0) {
 					throw new ControlPlaneNotFoundError("knowledge base", uid);
@@ -444,8 +442,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"knowledge-bases",
 			(rows) => {
 				const next = rows.filter(
-					(kb) =>
-						!(kb.workspaceId === workspace && kb.knowledgeBaseId === uid),
+					(kb) => !(kb.workspaceId === workspace && kb.knowledgeBaseId === uid),
 				);
 				return {
 					rows: next,
@@ -473,8 +470,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		await this.assertKnowledgeBase(workspace, knowledgeBase);
 		const all = await this.readAll<RagDocumentRecord>("rag-documents");
 		return all.filter(
-			(d) =>
-				d.workspaceId === workspace && d.knowledgeBaseId === knowledgeBase,
+			(d) => d.workspaceId === workspace && d.knowledgeBaseId === knowledgeBase,
 		);
 	}
 
@@ -652,8 +648,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				const uid = input.uid ?? randomUUID();
 				if (
 					rows.some(
-						(s) =>
-							s.workspaceId === workspace && s.chunkingServiceId === uid,
+						(s) => s.workspaceId === workspace && s.chunkingServiceId === uid,
 					)
 				) {
 					throw new ControlPlaneConflictError(
@@ -731,8 +726,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"chunking-services",
 			(rows) => {
 				const next = rows.filter(
-					(s) =>
-						!(s.workspaceId === workspace && s.chunkingServiceId === uid),
+					(s) => !(s.workspaceId === workspace && s.chunkingServiceId === uid),
 				);
 				return {
 					rows: next,
@@ -748,9 +742,8 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		workspace: string,
 	): Promise<readonly EmbeddingServiceRecord[]> {
 		await this.assertWorkspace(workspace);
-		const all = await this.readAll<EmbeddingServiceRecord>(
-			"embedding-services",
-		);
+		const all =
+			await this.readAll<EmbeddingServiceRecord>("embedding-services");
 		return all.filter((s) => s.workspaceId === workspace);
 	}
 
@@ -759,13 +752,11 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<EmbeddingServiceRecord | null> {
 		await this.assertWorkspace(workspace);
-		const all = await this.readAll<EmbeddingServiceRecord>(
-			"embedding-services",
-		);
+		const all =
+			await this.readAll<EmbeddingServiceRecord>("embedding-services");
 		return (
 			all.find(
-				(s) =>
-					s.workspaceId === workspace && s.embeddingServiceId === uid,
+				(s) => s.workspaceId === workspace && s.embeddingServiceId === uid,
 			) ?? null
 		);
 	}
@@ -781,8 +772,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				const uid = input.uid ?? randomUUID();
 				if (
 					rows.some(
-						(s) =>
-							s.workspaceId === workspace && s.embeddingServiceId === uid,
+						(s) => s.workspaceId === workspace && s.embeddingServiceId === uid,
 					)
 				) {
 					throw new ControlPlaneConflictError(
@@ -827,8 +817,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"embedding-services",
 			(rows) => {
 				const idx = rows.findIndex(
-					(s) =>
-						s.workspaceId === workspace && s.embeddingServiceId === uid,
+					(s) => s.workspaceId === workspace && s.embeddingServiceId === uid,
 				);
 				if (idx < 0) {
 					throw new ControlPlaneNotFoundError("embedding service", uid);
@@ -863,8 +852,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"embedding-services",
 			(rows) => {
 				const next = rows.filter(
-					(s) =>
-						!(s.workspaceId === workspace && s.embeddingServiceId === uid),
+					(s) => !(s.workspaceId === workspace && s.embeddingServiceId === uid),
 				);
 				return {
 					rows: next,
@@ -880,9 +868,8 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		workspace: string,
 	): Promise<readonly RerankingServiceRecord[]> {
 		await this.assertWorkspace(workspace);
-		const all = await this.readAll<RerankingServiceRecord>(
-			"reranking-services",
-		);
+		const all =
+			await this.readAll<RerankingServiceRecord>("reranking-services");
 		return all.filter((s) => s.workspaceId === workspace);
 	}
 
@@ -891,13 +878,11 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<RerankingServiceRecord | null> {
 		await this.assertWorkspace(workspace);
-		const all = await this.readAll<RerankingServiceRecord>(
-			"reranking-services",
-		);
+		const all =
+			await this.readAll<RerankingServiceRecord>("reranking-services");
 		return (
 			all.find(
-				(s) =>
-					s.workspaceId === workspace && s.rerankingServiceId === uid,
+				(s) => s.workspaceId === workspace && s.rerankingServiceId === uid,
 			) ?? null
 		);
 	}
@@ -913,8 +898,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				const uid = input.uid ?? randomUUID();
 				if (
 					rows.some(
-						(s) =>
-							s.workspaceId === workspace && s.rerankingServiceId === uid,
+						(s) => s.workspaceId === workspace && s.rerankingServiceId === uid,
 					)
 				) {
 					throw new ControlPlaneConflictError(
@@ -962,8 +946,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"reranking-services",
 			(rows) => {
 				const idx = rows.findIndex(
-					(s) =>
-						s.workspaceId === workspace && s.rerankingServiceId === uid,
+					(s) => s.workspaceId === workspace && s.rerankingServiceId === uid,
 				);
 				if (idx < 0) {
 					throw new ControlPlaneNotFoundError("reranking service", uid);
@@ -998,8 +981,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			"reranking-services",
 			(rows) => {
 				const next = rows.filter(
-					(s) =>
-						!(s.workspaceId === workspace && s.rerankingServiceId === uid),
+					(s) => !(s.workspaceId === workspace && s.rerankingServiceId === uid),
 				);
 				return {
 					rows: next,

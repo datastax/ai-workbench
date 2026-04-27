@@ -52,7 +52,10 @@ export function KnowledgeBaseExplorerPage() {
 	const [ingestOpen, setIngestOpen] = useState(false);
 	const [detail, setDetail] = useState<RagDocumentRecord | null>(null);
 	const [toDelete, setToDelete] = useState<RagDocumentRecord | null>(null);
-	const deleteDoc = useDeleteDocument(workspaceUid ?? "", knowledgeBaseUid ?? "");
+	const deleteDoc = useDeleteDocument(
+		workspaceUid ?? "",
+		knowledgeBaseUid ?? "",
+	);
 
 	if (!workspaceUid || !knowledgeBaseUid) {
 		return (
@@ -68,10 +71,7 @@ export function KnowledgeBaseExplorerPage() {
 	}
 	if (ws.isError) {
 		return (
-			<ErrorState
-				title="Couldn't load workspace"
-				message={ws.error.message}
-			/>
+			<ErrorState title="Couldn't load workspace" message={ws.error.message} />
 		);
 	}
 	if (kb.isError || !kb.data) {

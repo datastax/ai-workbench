@@ -93,10 +93,7 @@ export function kbDocumentRoutes(
 			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
 			const query = c.req.valid("query");
 			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listRagDocuments(
-				workspaceUid,
-				knowledgeBaseUid,
-			);
+			const rows = await store.listRagDocuments(workspaceUid, knowledgeBaseUid);
 			return c.json(paginate(rows, query), 200);
 		},
 	);
@@ -202,11 +199,7 @@ export function kbDocumentRoutes(
 			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
 
-			const resolved = await resolveKb(
-				store,
-				workspaceUid,
-				knowledgeBaseUid,
-			);
+			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
 
 			const document = await store.createRagDocument(
 				workspaceUid,
@@ -323,11 +316,7 @@ export function kbDocumentRoutes(
 			);
 			if (!doc) throw new ControlPlaneNotFoundError("document", documentUid);
 
-			const resolved = await resolveKb(
-				store,
-				workspaceUid,
-				knowledgeBaseUid,
-			);
+			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
 			const driver = drivers.for(resolved.workspace);
 			if (typeof driver.listRecords !== "function") {
 				throw new ApiError(
@@ -493,11 +482,7 @@ export function kbDocumentRoutes(
 			// Cascade: drop chunk records out of the KB's vector collection
 			// before the doc row goes away. Otherwise orphan chunks linger
 			// and surface in KB-scoped search.
-			const resolved = await resolveKb(
-				store,
-				workspaceUid,
-				knowledgeBaseUid,
-			);
+			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
 			const driver = drivers.for(resolved.workspace);
 			const filter = {
 				[KB_SCOPE_KEY]: knowledgeBaseUid,

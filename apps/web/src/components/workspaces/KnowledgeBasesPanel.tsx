@@ -27,10 +27,7 @@ import {
 } from "@/hooks/useKnowledgeBases";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
-import type {
-	KnowledgeBaseRecord,
-	RagDocumentRecord,
-} from "@/lib/schemas";
+import type { KnowledgeBaseRecord, RagDocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { CreateKnowledgeBaseDialog } from "./CreateKnowledgeBaseDialog";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";

@@ -45,9 +45,7 @@ export interface KbDataPlaneDeps {
 	readonly embedders: EmbedderFactory;
 }
 
-export function kbDataPlaneRoutes(
-	deps: KbDataPlaneDeps,
-): OpenAPIHono<AppEnv> {
+export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 	const { store, drivers, embedders } = deps;
 	const app = makeOpenApi();
 
@@ -73,7 +71,8 @@ export function kbDataPlaneRoutes(
 				},
 				404: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or embedding service not found",
+					description:
+						"Workspace, knowledge base, or embedding service not found",
 				},
 				400: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
@@ -129,8 +128,7 @@ export function kbDataPlaneRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, recordId } =
-				c.req.valid("param");
+			const { workspaceUid, knowledgeBaseUid, recordId } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceUid);
 			const { workspace, descriptor } = await resolveKb(
 				store,

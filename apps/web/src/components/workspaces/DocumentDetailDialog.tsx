@@ -98,11 +98,7 @@ export function DocumentDetailDialog({
 								value={doc.chunkTotal !== null ? String(doc.chunkTotal) : "—"}
 							/>
 							<KV label="MIME / type" value={doc.fileType ?? "—"} mono />
-							<KV
-								label="Content hash"
-								value={doc.contentHash ?? "—"}
-								mono
-							/>
+							<KV label="Content hash" value={doc.contentHash ?? "—"} mono />
 						</div>
 
 						{Object.keys(doc.metadata).length > 0 ? (

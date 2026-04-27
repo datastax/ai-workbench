@@ -333,8 +333,8 @@ export function IngestQueueDialog({
 					<DialogTitle>Ingest into "{knowledgeBase.name}"</DialogTitle>
 					<DialogDescription>
 						Drop one or more files, or a folder. Each file becomes a separate
-						document; ingests run sequentially through the KB's bound
-						chunking + embedding services.
+						document; ingests run sequentially through the KB's bound chunking +
+						embedding services.
 					</DialogDescription>
 				</DialogHeader>
 

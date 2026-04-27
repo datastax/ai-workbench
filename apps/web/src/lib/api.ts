@@ -8,11 +8,11 @@ import {
 	ChunkingServiceRecordSchema,
 	type CreateApiKeyInput,
 	type CreateChunkingServiceInput,
+	type CreatedApiKeyResponse,
+	CreatedApiKeyResponseSchema,
 	type CreateEmbeddingServiceInput,
 	type CreateKnowledgeBaseInput,
 	type CreateRerankingServiceInput,
-	type CreatedApiKeyResponse,
-	CreatedApiKeyResponseSchema,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
 	DocumentChunkSchema,
@@ -20,16 +20,16 @@ import {
 	type EmbeddingServiceRecord,
 	EmbeddingServiceRecordSchema,
 	ErrorEnvelopeSchema,
+	type JobRecord,
+	JobRecordSchema,
 	type KbAsyncIngestResponse,
 	KbAsyncIngestResponseSchema,
 	type KbIngestRequest,
 	KnowledgeBasePageSchema,
 	type KnowledgeBaseRecord,
 	KnowledgeBaseRecordSchema,
-	type JobRecord,
-	JobRecordSchema,
-	type RagDocumentRecord,
 	RagDocumentPageSchema,
+	type RagDocumentRecord,
 	RerankingServicePageSchema,
 	type RerankingServiceRecord,
 	RerankingServiceRecordSchema,
@@ -232,9 +232,7 @@ export const api = {
 
 	/* -------- Knowledge bases -------- */
 
-	listKnowledgeBases: (
-		workspaceUid: string,
-	): Promise<KnowledgeBaseRecord[]> =>
+	listKnowledgeBases: (workspaceUid: string): Promise<KnowledgeBaseRecord[]> =>
 		request(
 			`/workspaces/${workspaceUid}/knowledge-bases`,
 			{ method: "GET" },
@@ -320,10 +318,7 @@ export const api = {
 			ChunkingServiceRecordSchema,
 		),
 
-	deleteChunkingService: (
-		workspaceUid: string,
-		uid: string,
-	): Promise<void> =>
+	deleteChunkingService: (workspaceUid: string, uid: string): Promise<void> =>
 		request(
 			`/workspaces/${workspaceUid}/chunking-services/${uid}`,
 			{ method: "DELETE" },
@@ -349,10 +344,7 @@ export const api = {
 			EmbeddingServiceRecordSchema,
 		),
 
-	deleteEmbeddingService: (
-		workspaceUid: string,
-		uid: string,
-	): Promise<void> =>
+	deleteEmbeddingService: (workspaceUid: string, uid: string): Promise<void> =>
 		request(
 			`/workspaces/${workspaceUid}/embedding-services/${uid}`,
 			{ method: "DELETE" },
@@ -378,10 +370,7 @@ export const api = {
 			RerankingServiceRecordSchema,
 		),
 
-	deleteRerankingService: (
-		workspaceUid: string,
-		uid: string,
-	): Promise<void> =>
+	deleteRerankingService: (workspaceUid: string, uid: string): Promise<void> =>
 		request(
 			`/workspaces/${workspaceUid}/reranking-services/${uid}`,
 			{ method: "DELETE" },

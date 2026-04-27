@@ -353,7 +353,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const next: KnowledgeBaseRecord = {
 			...base,
 			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && { description: patch.description }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
 			...(patch.status !== undefined && { status: patch.status }),
 			...(patch.rerankingServiceId !== undefined && {
 				rerankingServiceId: patch.rerankingServiceId,
@@ -363,11 +365,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			updatedAt: nowIso(),
 		};
 		const nextRow = knowledgeBaseToRow(next);
-		const {
-			workspace_id: _w,
-			knowledge_base_id: _kb,
-			...fields
-		} = nextRow;
+		const { workspace_id: _w, knowledge_base_id: _kb, ...fields } = nextRow;
 		await this.tables.knowledgeBases.updateOne(
 			{ workspace_id: workspace, knowledge_base_id: uid },
 			{ $set: fields },
@@ -705,11 +703,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			updatedAt: nowIso(),
 		};
 		const nextRow = chunkingServiceToRow(next);
-		const {
-			workspace_id: _w,
-			chunking_service_id: _id,
-			...fields
-		} = nextRow;
+		const { workspace_id: _w, chunking_service_id: _id, ...fields } = nextRow;
 		await this.tables.chunkingServices.updateOne(
 			{ workspace_id: workspace, chunking_service_id: uid },
 			{ $set: fields },
@@ -814,7 +808,8 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			workspace_id: workspace,
 			embedding_service_id: uid,
 		});
-		if (!existing) throw new ControlPlaneNotFoundError("embedding service", uid);
+		if (!existing)
+			throw new ControlPlaneNotFoundError("embedding service", uid);
 		const base = embeddingServiceFromRow(existing);
 		const {
 			supportedLanguages: _langs,
@@ -833,11 +828,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			updatedAt: nowIso(),
 		};
 		const nextRow = embeddingServiceToRow(merged);
-		const {
-			workspace_id: _w,
-			embedding_service_id: _id,
-			...fields
-		} = nextRow;
+		const { workspace_id: _w, embedding_service_id: _id, ...fields } = nextRow;
 		await this.tables.embeddingServices.updateOne(
 			{ workspace_id: workspace, embedding_service_id: uid },
 			{ $set: fields },
@@ -945,7 +936,8 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			workspace_id: workspace,
 			reranking_service_id: uid,
 		});
-		if (!existing) throw new ControlPlaneNotFoundError("reranking service", uid);
+		if (!existing)
+			throw new ControlPlaneNotFoundError("reranking service", uid);
 		const base = rerankingServiceFromRow(existing);
 		const {
 			supportedLanguages: _langs,
@@ -964,11 +956,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			updatedAt: nowIso(),
 		};
 		const nextRow = rerankingServiceToRow(merged);
-		const {
-			workspace_id: _w,
-			reranking_service_id: _id,
-			...fields
-		} = nextRow;
+		const { workspace_id: _w, reranking_service_id: _id, ...fields } = nextRow;
 		await this.tables.rerankingServices.updateOne(
 			{ workspace_id: workspace, reranking_service_id: uid },
 			{ $set: fields },
@@ -1056,7 +1044,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const rows = await this.tables.knowledgeBases
 			.find({ workspace_id: workspace })
 			.toArray();
-		const fieldOnRow: keyof typeof rows[number] =
+		const fieldOnRow: keyof (typeof rows)[number] =
 			field === "embeddingServiceId"
 				? "embedding_service_id"
 				: field === "chunkingServiceId"

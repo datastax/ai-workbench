@@ -68,8 +68,7 @@ export function useUpdateKnowledgeBase(
 ): UseMutationResult<KnowledgeBaseRecord, Error, UpdateKnowledgeBaseInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (patch) =>
-			api.updateKnowledgeBase(workspaceUid, kbUid, patch),
+		mutationFn: (patch) => api.updateKnowledgeBase(workspaceUid, kbUid, patch),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
 			qc.invalidateQueries({ queryKey: keys.one(workspaceUid, kbUid) });

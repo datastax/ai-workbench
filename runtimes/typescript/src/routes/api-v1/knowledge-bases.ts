@@ -168,10 +168,7 @@ export function knowledgeBaseRoutes(
 				knowledgeBaseUid,
 			);
 			if (!record)
-				throw new ControlPlaneNotFoundError(
-					"knowledge base",
-					knowledgeBaseUid,
-				);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
 			return c.json(record, 200);
 		},
 	);
@@ -204,7 +201,8 @@ export function knowledgeBaseRoutes(
 				},
 				404: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or reranking service not found",
+					description:
+						"Workspace, knowledge base, or reranking service not found",
 				},
 			},
 		}),
@@ -255,10 +253,7 @@ export function knowledgeBaseRoutes(
 				knowledgeBaseUid,
 			);
 			if (!existing) {
-				throw new ControlPlaneNotFoundError(
-					"knowledge base",
-					knowledgeBaseUid,
-				);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
 			}
 			const { workspace, descriptor } = await resolveKb(
 				store,
@@ -273,10 +268,7 @@ export function knowledgeBaseRoutes(
 				knowledgeBaseUid,
 			);
 			if (!deleted)
-				throw new ControlPlaneNotFoundError(
-					"knowledge base",
-					knowledgeBaseUid,
-				);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
 			return c.body(null, 204);
 		},
 	);

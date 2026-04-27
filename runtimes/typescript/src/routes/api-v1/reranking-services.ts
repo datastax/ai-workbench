@@ -60,10 +60,7 @@ export function rerankingServiceRoutes(
 			const query = c.req.valid("query");
 			assertWorkspaceAccess(c, workspaceUid);
 			const rows = await store.listRerankingServices(workspaceUid);
-			return c.json(
-				toWirePage(paginate(rows, query), toWireReranking),
-				200,
-			);
+			return c.json(toWirePage(paginate(rows, query), toWireReranking), 200);
 		},
 	);
 

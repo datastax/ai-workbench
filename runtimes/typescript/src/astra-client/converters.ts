@@ -122,7 +122,9 @@ export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
  * record exposes it as a sorted `readonly string[]` so JSON
  * serialization roundtrips cleanly across every backend.
  */
-function setToSortedArray(value: Iterable<string> | null | undefined): string[] {
+function setToSortedArray(
+	value: Iterable<string> | null | undefined,
+): string[] {
 	return [...(value ?? [])].sort();
 }
 
@@ -132,9 +134,7 @@ function arrayToSet(value: readonly string[]): Set<string> {
 	return new Set(value);
 }
 
-function parseJsonObject(
-	raw: string | null,
-): Record<string, unknown> | null {
+function parseJsonObject(raw: string | null): Record<string, unknown> | null {
 	if (raw == null) return null;
 	const parsed = JSON.parse(raw) as unknown;
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {

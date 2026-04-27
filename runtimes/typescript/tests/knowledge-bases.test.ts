@@ -38,7 +38,9 @@ function makeApp() {
 	return createApp({ store, drivers, secrets, auth, embedders });
 }
 
-async function createWorkspace(app: ReturnType<typeof makeApp>): Promise<string> {
+async function createWorkspace(
+	app: ReturnType<typeof makeApp>,
+): Promise<string> {
 	const res = await app.request("/api/v1/workspaces", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -54,14 +56,11 @@ async function createService(
 	path: string,
 	body: Record<string, unknown>,
 ): Promise<string> {
-	const res = await app.request(
-		`/api/v1/workspaces/${workspaceUid}/${path}`,
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		},
-	);
+	const res = await app.request(`/api/v1/workspaces/${workspaceUid}/${path}`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
 	expect(res.status, await res.clone().text()).toBe(201);
 	const j = await json(res);
 	// Each service surfaces its own *ServiceId field.
@@ -461,18 +460,15 @@ async function makeReadyKb(app: ReturnType<typeof makeApp>): Promise<{
 		name: "c",
 		engine: "docling",
 	});
-	const create = await app.request(
-		`/api/v1/workspaces/${ws}/knowledge-bases`,
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				name: "kb",
-				embeddingServiceId: embId,
-				chunkingServiceId: chunkId,
-			}),
-		},
-	);
+	const create = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({
+			name: "kb",
+			embeddingServiceId: embId,
+			chunkingServiceId: chunkId,
+		}),
+	});
 	expect(create.status).toBe(201);
 	const kb = await json(create);
 	return { ws, kbId: kb.knowledgeBaseId };

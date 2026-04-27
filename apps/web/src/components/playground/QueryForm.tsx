@@ -135,8 +135,8 @@ export function QueryForm({
 					/>
 					<p className="text-xs text-slate-500">
 						The runtime embeds via the KB's bound embedding service (
-						<span className="font-mono">{target.embeddingProvider}</span>)
-						when the backend can't do it server-side.
+						<span className="font-mono">{target.embeddingProvider}</span>) when
+						the backend can't do it server-side.
 					</p>
 				</div>
 			) : (

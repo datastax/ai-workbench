@@ -397,9 +397,9 @@ export function runContract(name: string, factory: ContractFactory): void {
 				await expect(store.listKnowledgeBases(ws.uid)).rejects.toBeInstanceOf(
 					ControlPlaneNotFoundError,
 				);
-				await expect(
-					store.listChunkingServices(ws.uid),
-				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(store.listChunkingServices(ws.uid)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
 				await expect(
 					store.listEmbeddingServices(ws.uid),
 				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
@@ -460,15 +460,11 @@ export function runContract(name: string, factory: ContractFactory): void {
 					chunkingServiceId: chunk.chunkingServiceId,
 				});
 
-				const doc = await store.createRagDocument(
-					ws.uid,
-					kb.knowledgeBaseId,
-					{
-						sourceFilename: "alpha.txt",
-						contentHash: "sha-abc",
-						metadata: { tag: "x" },
-					},
-				);
+				const doc = await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "alpha.txt",
+					contentHash: "sha-abc",
+					metadata: { tag: "x" },
+				});
 				expect(doc.workspaceId).toBe(ws.uid);
 				expect(doc.knowledgeBaseId).toBe(kb.knowledgeBaseId);
 				expect(doc.contentHash).toBe("sha-abc");

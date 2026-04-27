@@ -49,9 +49,9 @@ export function ServicesPanel({ workspace }: { workspace: string }) {
 			<div>
 				<p className="text-sm font-medium text-slate-900">Execution services</p>
 				<p className="text-xs text-slate-500 mt-0.5">
-					Chunkers, embedders, and rerankers a knowledge base can bind to. A
-					KB composes exactly one chunking + one embedding service at create
-					time, plus an optional reranker.
+					Chunkers, embedders, and rerankers a knowledge base can bind to. A KB
+					composes exactly one chunking + one embedding service at create time,
+					plus an optional reranker.
 				</p>
 			</div>
 			<EmbeddingSubpanel workspace={workspace} />
@@ -124,8 +124,8 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 					<DialogHeader>
 						<DialogTitle>New embedding service</DialogTitle>
 						<DialogDescription>
-							Names a remote embedding endpoint plus the dimension/metric
-							every KB bound to it must agree on.
+							Names a remote embedding endpoint plus the dimension/metric every
+							KB bound to it must agree on.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex flex-col gap-3">
@@ -230,7 +230,12 @@ function ChunkingSubpanel({ workspace }: { workspace: string }) {
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex flex-col gap-3">
-						<Field label="Name" id="chunk-name" value={name} onChange={setName} />
+						<Field
+							label="Name"
+							id="chunk-name"
+							value={name}
+							onChange={setName}
+						/>
 						<Field
 							label="Engine"
 							id="chunk-engine"

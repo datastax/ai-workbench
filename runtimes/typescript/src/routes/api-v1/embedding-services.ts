@@ -59,10 +59,7 @@ export function embeddingServiceRoutes(
 			const query = c.req.valid("query");
 			assertWorkspaceAccess(c, workspaceUid);
 			const rows = await store.listEmbeddingServices(workspaceUid);
-			return c.json(
-				toWirePage(paginate(rows, query), toWireEmbedding),
-				200,
-			);
+			return c.json(toWirePage(paginate(rows, query), toWireEmbedding), 200);
 		},
 	);
 

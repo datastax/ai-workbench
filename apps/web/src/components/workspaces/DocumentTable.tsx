@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatFileSize } from "@/lib/files";
-import type { RagDocumentRecord, DocumentStatus } from "@/lib/schemas";
+import type { DocumentStatus, RagDocumentRecord } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
@@ -241,7 +241,11 @@ export function DocumentTable({
 	);
 }
 
-function compare(a: RagDocumentRecord, b: RagDocumentRecord, key: SortKey): number {
+function compare(
+	a: RagDocumentRecord,
+	b: RagDocumentRecord,
+	key: SortKey,
+): number {
 	switch (key) {
 		case "name": {
 			const an = a.sourceFilename ?? a.documentId;
