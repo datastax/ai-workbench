@@ -672,6 +672,123 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("RAG document CRUD round-trip and KB scoping", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+
+				const doc = await store.createRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					{
+						sourceFilename: "alpha.txt",
+						contentHash: "sha-abc",
+						metadata: { tag: "x" },
+					},
+				);
+				expect(doc.workspaceId).toBe(ws.uid);
+				expect(doc.knowledgeBaseId).toBe(kb.knowledgeBaseId);
+				expect(doc.contentHash).toBe("sha-abc");
+
+				const list = await store.listRagDocuments(ws.uid, kb.knowledgeBaseId);
+				expect(list).toHaveLength(1);
+
+				const updated = await store.updateRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+					{ status: "ready" },
+				);
+				expect(updated.status).toBe("ready");
+
+				const got = await store.getRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+				);
+				expect(got?.status).toBe("ready");
+
+				const { deleted } = await store.deleteRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getRagDocument(
+						ws.uid,
+						kb.knowledgeBaseId,
+						doc.documentId,
+					),
+				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("RAG document operations 404 on unknown KB", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.listRagDocuments(
+						ws.uid,
+						"00000000-0000-0000-0000-000000000000",
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteKnowledgeBase cascades RAG documents", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+				await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "f.txt",
+				});
+				await store.deleteKnowledgeBase(ws.uid, kb.knowledgeBaseId);
+				// The KB is gone, so list throws not-found rather than
+				// returning a stale row.
+				await expect(
+					store.listRagDocuments(ws.uid, kb.knowledgeBaseId),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("touchApiKey bumps lastUsedAt", async () => {
 			const { store, cleanup } = await factory();
 			try {

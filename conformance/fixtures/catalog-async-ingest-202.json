@@ -139,6 +139,7 @@
 						},
 						"jobId": "{{UUID_5}}",
 						"kind": "ingest",
+						"knowledgeBaseUid": null,
 						"leasedAt": null,
 						"leasedBy": null,
 						"processed": 0,

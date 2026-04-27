@@ -28,6 +28,7 @@ import type {
 	KnowledgeBaseRecord,
 	KnowledgeBaseStatus,
 	LexicalConfig,
+	RagDocumentRecord,
 	RerankingConfig,
 	RerankingServiceRecord,
 	SecretRef,
@@ -112,6 +113,28 @@ export interface UpdateDocumentInput {
 	readonly errorMessage?: string | null;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
+
+/* ------------------------------------------------------------------ */
+/* RAG document (KB-scoped — issue #98)                               */
+/* ------------------------------------------------------------------ */
+
+export interface CreateRagDocumentInput {
+	readonly uid?: string;
+	readonly sourceDocId?: string | null;
+	readonly sourceFilename?: string | null;
+	readonly fileType?: string | null;
+	readonly fileSize?: number | null;
+	readonly contentHash?: string | null;
+	readonly chunkTotal?: number | null;
+	readonly ingestedAt?: string | null;
+	readonly status?: DocumentStatus;
+	readonly errorMessage?: string | null;
+	readonly metadata?: Readonly<Record<string, string>>;
+}
+
+export type UpdateRagDocumentInput = Partial<
+	Omit<CreateRagDocumentInput, "uid">
+>;
 
 /* ------------------------------------------------------------------ */
 /* API key                                                            */
@@ -364,6 +387,35 @@ export interface ControlPlaneStore {
 	findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null>;
 	/** Fire-and-forget bump of `lastUsedAt` after a successful verify. */
 	touchApiKey(workspace: string, keyId: string): Promise<void>;
+
+	/* RAG documents (KB-scoped, issue #98). New surface backed by
+	 * `wb_rag_documents_by_knowledge_base`. The legacy catalog-scoped
+	 * Document methods above stay until phase 1c drops `/catalogs`. */
+	listRagDocuments(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly RagDocumentRecord[]>;
+	getRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<RagDocumentRecord | null>;
+	createRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateRagDocumentInput,
+	): Promise<RagDocumentRecord>;
+	updateRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateRagDocumentInput,
+	): Promise<RagDocumentRecord>;
+	deleteRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
 
 	/* Knowledge bases (issue #98) */
 	listKnowledgeBases(workspace: string): Promise<readonly KnowledgeBaseRecord[]>;

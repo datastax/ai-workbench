@@ -16,6 +16,7 @@
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
 	CatalogRecord,
+	KnowledgeBaseRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../control-plane/types.js";
@@ -29,6 +30,7 @@ import {
 	CHUNK_INDEX_KEY,
 	CHUNK_TEXT_KEY,
 	DOCUMENT_SCOPE_KEY,
+	KB_SCOPE_KEY,
 } from "./payload-keys.js";
 import { RecursiveCharacterChunker } from "./recursive-chunker.js";
 
@@ -125,6 +127,83 @@ export async function runIngest(
 	} catch (err) {
 		await store
 			.updateDocument(workspace.uid, catalog.uid, documentUid, {
+				status: "failed",
+				errorMessage: safeErrorMessage(err),
+			})
+			.catch(() => undefined);
+		throw err;
+	}
+}
+
+/* ------------------------------------------------------------------ */
+/* KB-scoped ingest (issue #98)                                       */
+/* ------------------------------------------------------------------ */
+
+export interface KbIngestContext {
+	readonly workspace: WorkspaceRecord;
+	readonly knowledgeBase: KnowledgeBaseRecord;
+	/** Synthesised driver descriptor — the data plane stays
+	 * descriptor-shaped while the control plane speaks KB. */
+	readonly descriptor: VectorStoreRecord;
+	readonly documentUid: string;
+}
+
+/**
+ * KB-scoped sibling of {@link runIngest}. Same chunk → embed → upsert
+ * pipeline; differs only in which document table it patches and which
+ * scope key gets stamped on each chunk's payload.
+ */
+export async function runKbIngest(
+	deps: IngestPipelineDeps,
+	ctx: KbIngestContext,
+	input: IngestInput,
+	onProgress?: (p: IngestProgress) => void,
+): Promise<IngestResult> {
+	const { store, drivers, embedders } = deps;
+	const { workspace, knowledgeBase, descriptor, documentUid } = ctx;
+	const kbId = knowledgeBase.knowledgeBaseId;
+
+	const chunker = new RecursiveCharacterChunker(input.chunker);
+	const chunks = chunker.chunk({
+		text: input.text,
+		metadata: input.metadata,
+	});
+
+	await store.updateRagDocument(workspace.uid, kbId, documentUid, {
+		chunkTotal: chunks.length,
+	});
+	onProgress?.({ processed: 0, total: chunks.length });
+
+	const driver = drivers.for(workspace);
+
+	try {
+		if (chunks.length > 0) {
+			await dispatchUpsert({
+				ctx: { workspace, descriptor },
+				driver,
+				embedders,
+				records: chunks.map((chunk) => ({
+					id: `${documentUid}:${chunk.index}`,
+					text: chunk.text,
+					payload: {
+						...chunk.metadata,
+						[KB_SCOPE_KEY]: kbId,
+						[DOCUMENT_SCOPE_KEY]: documentUid,
+						[CHUNK_INDEX_KEY]: chunk.index,
+						[CHUNK_TEXT_KEY]: chunk.text,
+					},
+				})),
+			});
+		}
+		onProgress?.({ processed: chunks.length, total: chunks.length });
+		await store.updateRagDocument(workspace.uid, kbId, documentUid, {
+			status: "ready",
+			ingestedAt: new Date().toISOString(),
+		});
+		return { chunks: chunks.length };
+	} catch (err) {
+		await store
+			.updateRagDocument(workspace.uid, kbId, documentUid, {
 				status: "failed",
 				errorMessage: safeErrorMessage(err),
 			})

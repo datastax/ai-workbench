@@ -562,6 +562,9 @@ export const JOBS_DEFINITION = {
 		job_id: "uuid",
 		kind: "text",
 		catalog_uid: "uuid",
+		// KB-scoped ingest jobs (issue #98) record the knowledge base
+		// instead of a catalog. Mutually exclusive with `catalog_uid`.
+		knowledge_base_uid: "uuid",
 		document_uid: "uuid",
 		status: "text",
 		processed: "int",

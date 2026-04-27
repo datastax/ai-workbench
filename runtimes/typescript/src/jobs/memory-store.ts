@@ -35,6 +35,7 @@ export class MemoryJobStore implements JobStore {
 			jobId,
 			kind: input.kind,
 			catalogUid: input.catalogUid ?? null,
+			knowledgeBaseUid: input.knowledgeBaseUid ?? null,
 			documentUid: input.documentUid ?? null,
 			status: "pending",
 			processed: 0,

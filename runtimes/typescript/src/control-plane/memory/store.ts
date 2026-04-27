@@ -40,6 +40,7 @@ import type {
 	CreateDocumentInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
+	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
@@ -49,6 +50,7 @@ import type {
 	UpdateDocumentInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
+	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
@@ -60,6 +62,7 @@ import type {
 	DocumentRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	RagDocumentRecord,
 	RerankingServiceRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
@@ -101,6 +104,13 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		Map<string, VectorStoreRecord>
 	>();
 	private readonly documents = new Map<string, Map<string, DocumentRecord>>();
+	// KB-scoped RAG documents (issue #98). `${workspaceUid}:${kbUid}`
+	// keyed; co-resident with `documents` only by accident — phase 1c
+	// drops the catalog-scoped map above.
+	private readonly ragDocuments = new Map<
+		string,
+		Map<string, RagDocumentRecord>
+	>();
 	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
 	private readonly apiKeyPrefixIndex = new Map<string, ApiKeyRecord>();
 	// Knowledge-base schema (issue #98). All four maps follow the same
@@ -461,6 +471,117 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		};
 	}
 
+	/* ---------------- RAG documents (KB-scoped) ---------------- */
+
+	async listRagDocuments(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly RagDocumentRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return Array.from(
+			this.ragDocuments.get(docKey(workspace, knowledgeBase))?.values() ?? [],
+		);
+	}
+
+	async getRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return (
+			this.ragDocuments.get(docKey(workspace, knowledgeBase))?.get(uid) ?? null
+		);
+	}
+
+	async createRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const key = docKey(workspace, knowledgeBase);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.ragDocuments.get(key) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+			);
+		}
+		const record: RagDocumentRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: knowledgeBase,
+			documentId: uid,
+			sourceDocId: input.sourceDocId ?? null,
+			sourceFilename: input.sourceFilename ?? null,
+			fileType: input.fileType ?? null,
+			fileSize: input.fileSize ?? null,
+			contentHash: input.contentHash ?? null,
+			chunkTotal: input.chunkTotal ?? null,
+			ingestedAt: input.ingestedAt ?? null,
+			updatedAt: nowIso(),
+			status: input.status ?? "pending",
+			errorMessage: input.errorMessage ?? null,
+			metadata: freezeMetadata(input.metadata),
+		};
+		bucket.set(uid, record);
+		this.ragDocuments.set(key, bucket);
+		return record;
+	}
+
+	async updateRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const key = docKey(workspace, knowledgeBase);
+		const existing = this.ragDocuments.get(key)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("document", uid);
+		}
+		const next: RagDocumentRecord = {
+			...existing,
+			...(patch.sourceDocId !== undefined && {
+				sourceDocId: patch.sourceDocId,
+			}),
+			...(patch.sourceFilename !== undefined && {
+				sourceFilename: patch.sourceFilename,
+			}),
+			...(patch.fileType !== undefined && { fileType: patch.fileType }),
+			...(patch.fileSize !== undefined && { fileSize: patch.fileSize }),
+			...(patch.contentHash !== undefined && {
+				contentHash: patch.contentHash,
+			}),
+			...(patch.chunkTotal !== undefined && { chunkTotal: patch.chunkTotal }),
+			...(patch.ingestedAt !== undefined && { ingestedAt: patch.ingestedAt }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.errorMessage !== undefined && {
+				errorMessage: patch.errorMessage,
+			}),
+			...(patch.metadata !== undefined && {
+				metadata: freezeMetadata(patch.metadata),
+			}),
+			updatedAt: nowIso(),
+		};
+		this.ragDocuments.get(key)?.set(uid, next);
+		return next;
+	}
+
+	async deleteRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return {
+			deleted:
+				this.ragDocuments.get(docKey(workspace, knowledgeBase))?.delete(uid) ??
+				false,
+		};
+	}
+
 	/* ---------------- API keys ---------------- */
 
 	async listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]> {
@@ -627,9 +748,14 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
-		return {
-			deleted: this.knowledgeBases.get(workspace)?.delete(uid) ?? false,
-		};
+		const deleted = this.knowledgeBases.get(workspace)?.delete(uid) ?? false;
+		if (deleted) {
+			// Cascade RAG document rows so the next create with the same
+			// uid starts clean. Underlying vector collection cleanup is the
+			// caller's responsibility (KB delete route handles it).
+			this.ragDocuments.delete(docKey(workspace, uid));
+		}
+		return { deleted };
 	}
 
 	/* ---------------- Chunking services ---------------- */
@@ -1031,6 +1157,16 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			throw new ControlPlaneConflictError(
 				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
 			);
+		}
+	}
+
+	private async assertKnowledgeBase(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspace);
+		if (!this.knowledgeBases.get(workspace)?.has(knowledgeBase)) {
+			throw new ControlPlaneNotFoundError("knowledge base", knowledgeBase);
 		}
 	}
 

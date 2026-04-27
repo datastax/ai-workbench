@@ -15,6 +15,13 @@
  * mismatched value — are invisible. */
 export const CATALOG_SCOPE_KEY = "catalogUid";
 
+/** Payload key carrying the owning knowledge base's UID. The KB-scoped
+ * ingest pipeline stamps it on every chunk; KB-scoped search merges
+ * `{ [KB_SCOPE_KEY]: kb.uid }` into the effective filter so records
+ * from other KBs sharing a collection (today: never; future: agent
+ * over-fetch) stay invisible. */
+export const KB_SCOPE_KEY = "knowledgeBaseUid";
+
 /** Payload key identifying which source document a chunk belongs to.
  * Used for future document-scoped surfaces ("show all chunks of this
  * doc"). */

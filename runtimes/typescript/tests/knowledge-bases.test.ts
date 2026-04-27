@@ -443,3 +443,171 @@ describe("knowledge-base routes", () => {
 		expect(body.nextCursor).not.toBeNull();
 	});
 });
+
+/* ---------------- KB document / ingest routes ---------------- */
+
+async function makeReadyKb(app: ReturnType<typeof makeApp>): Promise<{
+	ws: string;
+	kbId: string;
+}> {
+	const ws = await createWorkspace(app);
+	const embId = await createService(app, ws, "embedding-services", {
+		name: "mock-embedder",
+		provider: "mock",
+		modelName: "mock-embedder",
+		embeddingDimension: 4,
+	});
+	const chunkId = await createService(app, ws, "chunking-services", {
+		name: "c",
+		engine: "docling",
+	});
+	const create = await app.request(
+		`/api/v1/workspaces/${ws}/knowledge-bases`,
+		{
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "kb",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+			}),
+		},
+	);
+	expect(create.status).toBe(201);
+	const kb = await json(create);
+	return { ws, kbId: kb.knowledgeBaseId };
+}
+
+describe("KB document routes", () => {
+	test("CRUD round-trip on /knowledge-bases/{kb}/documents", async () => {
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+
+		const create = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					sourceFilename: "alpha.txt",
+					metadata: { tag: "t" },
+				}),
+			},
+		);
+		expect(create.status, await create.clone().text()).toBe(201);
+		const doc = await json(create);
+		expect(doc.workspaceId).toBe(ws);
+		expect(doc.knowledgeBaseId).toBe(kbId);
+		expect(doc.documentId).toMatch(/^[0-9a-f-]{36}$/);
+
+		const list = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+		);
+		expect(list.status).toBe(200);
+		const page = await json(list);
+		expect(page.items).toHaveLength(1);
+
+		const upd = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${doc.documentId}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ status: "ready" }),
+			},
+		);
+		expect(upd.status).toBe(200);
+		expect((await json(upd)).status).toBe("ready");
+
+		const del = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${doc.documentId}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+
+		const after = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${doc.documentId}`,
+		);
+		expect(after.status).toBe(404);
+	});
+
+	test("404 when KB does not exist", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${randomUUID()}/documents`,
+		);
+		expect(res.status).toBe(404);
+	});
+
+	test("POST /ingest (sync) chunks, upserts, and stamps the document ready", async () => {
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "alpha bravo charlie delta echo foxtrot golf hotel",
+				}),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		const body = await json(res);
+		expect(body.document.status).toBe("ready");
+		expect(body.chunks).toBeGreaterThan(0);
+
+		// Search hits the freshly-upserted chunks.
+		const search = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "alpha bravo", topK: 1 }),
+			},
+		);
+		expect(search.status).toBe(200);
+		const hits = await json(search);
+		expect(hits.length).toBeGreaterThan(0);
+	});
+
+	test("POST /ingest?async=true returns 202 with a pending job tagged with the KB", async () => {
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest?async=true`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello world" }),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(202);
+		const body = await json(res);
+		expect(body.job.status).toBe("pending");
+		expect(body.job.knowledgeBaseUid).toBe(kbId);
+		expect(body.job.catalogUid).toBeNull();
+		expect(body.document.knowledgeBaseId).toBe(kbId);
+	});
+
+	test("DELETE on document with no record cascades cleanly", async () => {
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+		const create = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({}),
+			},
+		);
+		const doc = await json(create);
+		const del = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${doc.documentId}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+	});
+});

@@ -531,6 +531,7 @@ export const JobRecordSchema = z
 		jobId: z.string().uuid(),
 		kind: z.enum(["ingest"]),
 		catalogUid: z.string().uuid().nullable(),
+		knowledgeBaseUid: z.string().uuid().nullable(),
 		documentUid: z.string().uuid().nullable(),
 		status: JobStatusSchema,
 		processed: z.number().int().nonnegative(),
@@ -962,3 +963,83 @@ export const RerankingServiceUidParamSchema = z
 		param: { name: "rerankingServiceUid", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
+
+/* ---------- RAG document (KB-scoped) ---------- */
+
+export const RagDocumentRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		knowledgeBaseId: z.string().uuid(),
+		documentId: z.string().uuid(),
+		sourceDocId: z.string().nullable(),
+		sourceFilename: z.string().nullable(),
+		fileType: z.string().nullable(),
+		fileSize: z.number().int().nonnegative().nullable(),
+		contentHash: z.string().nullable(),
+		chunkTotal: z.number().int().nonnegative().nullable(),
+		ingestedAt: z.string().nullable(),
+		updatedAt: z.string(),
+		status: DocumentStatusSchema,
+		errorMessage: z.string().nullable(),
+		metadata: z.record(z.string(), z.string()),
+	})
+	.openapi("RagDocument");
+
+export const RagDocumentPageSchema = pageSchema(
+	"RagDocumentPage",
+	RagDocumentRecordSchema,
+);
+
+export const CreateRagDocumentInputSchema = z
+	.object({
+		uid: z.string().uuid().optional(),
+		sourceDocId: z.string().nullable().optional(),
+		sourceFilename: z.string().nullable().optional(),
+		fileType: z.string().nullable().optional(),
+		fileSize: z.number().int().nonnegative().nullable().optional(),
+		contentHash: z.string().nullable().optional(),
+		chunkTotal: z.number().int().nonnegative().nullable().optional(),
+		ingestedAt: z.string().nullable().optional(),
+		status: DocumentStatusSchema.optional(),
+		errorMessage: z.string().nullable().optional(),
+		metadata: z.record(z.string(), z.string()).optional(),
+	})
+	.openapi("CreateRagDocumentInput");
+
+export const UpdateRagDocumentInputSchema =
+	CreateRagDocumentInputSchema.partial()
+		.omit({ uid: true })
+		.openapi("UpdateRagDocumentInput");
+
+/**
+ * KB-scoped ingest request. Same content as the legacy catalog-scoped
+ * version, but `metadata` reserves `knowledgeBaseUid` / `documentUid`
+ * instead of `catalogUid` / `documentUid`.
+ */
+export const KbIngestRequestSchema = z
+	.object({
+		text: z.string().min(1).max(MAX_INGEST_TEXT_CHARS),
+		uid: z.string().uuid().optional(),
+		sourceDocId: z.string().nullable().optional(),
+		sourceFilename: z.string().nullable().optional(),
+		fileType: z.string().nullable().optional(),
+		fileSize: z.number().int().nonnegative().nullable().optional(),
+		contentHash: z.string().nullable().optional(),
+		metadata: z.record(z.string(), z.string()).optional(),
+		chunker: IngestChunkerOptionsSchema.optional(),
+	})
+	.openapi("KbIngestRequest");
+
+export const KbIngestResponseSchema = z
+	.object({
+		document: RagDocumentRecordSchema,
+		chunks: z.number().int().nonnegative(),
+	})
+	.openapi("KbIngestResponse");
+
+export const KbAsyncIngestResponseSchema = z
+	.object({
+		job: JobRecordSchema,
+		document: RagDocumentRecordSchema,
+	})
+	.openapi("KbAsyncIngestResponse");

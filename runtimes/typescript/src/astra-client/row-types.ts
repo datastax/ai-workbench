@@ -351,6 +351,7 @@ export interface JobRow {
 	job_id: Uuid;
 	kind: string;
 	catalog_uid: Uuid | null;
+	knowledge_base_uid: Uuid | null;
 	document_uid: Uuid | null;
 	status: string;
 	processed: number;

@@ -46,6 +46,7 @@ import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { jobRoutes } from "./routes/api-v1/jobs.js";
 import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
+import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
@@ -205,6 +206,16 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			store: opts.store,
 			drivers: opts.drivers,
 			embedders: opts.embedders,
+		}),
+	);
+	app.route(
+		"/api/v1/workspaces",
+		kbDocumentRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+			jobs: jobsStore,
+			replicaId,
 		}),
 	);
 

@@ -17,9 +17,10 @@ import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import type { IngestInput } from "../ingest/pipeline.js";
-import { runIngest } from "../ingest/pipeline.js";
+import { runIngest, runKbIngest } from "../ingest/pipeline.js";
 import { logger } from "../lib/logger.js";
 import { safeErrorMessage } from "../lib/safe-error.js";
+import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import type { JobStore } from "./store.js";
 import type { JobRecord } from "./types.js";
 
@@ -184,4 +185,105 @@ async function failJob(
 			leasedAt: null,
 		})
 		.catch(() => undefined);
+}
+
+/**
+ * KB-scoped sibling of {@link runIngestJob}. Drives the KB ingest
+ * pipeline for one job to terminal state; resolves the KB descriptor
+ * on each call so the sweeper can revive jobs whose schema was
+ * mutated mid-flight (e.g. KB renamed or its embedding service
+ * patched). Same lease + heartbeat semantics as the catalog path.
+ */
+export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
+	const { deps, workspaceUid, jobId, replicaId, input } = args;
+	const { store, drivers, embedders, jobs } = deps;
+
+	let job: JobRecord | null;
+	try {
+		job = await jobs.get(workspaceUid, jobId);
+	} catch (err) {
+		logger.warn(
+			{
+				workspace: workspaceUid,
+				jobId,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"kb ingest worker: get(job) failed; aborting",
+		);
+		return;
+	}
+	if (!job) {
+		logger.warn(
+			{ workspace: workspaceUid, jobId },
+			"kb ingest worker: job not found; aborting",
+		);
+		return;
+	}
+	if (job.status === "succeeded" || job.status === "failed") {
+		return;
+	}
+	if (!job.knowledgeBaseUid || !job.documentUid) {
+		await failJob(
+			jobs,
+			workspaceUid,
+			jobId,
+			"job is missing knowledgeBaseUid or documentUid; cannot run kb ingest pipeline",
+		);
+		return;
+	}
+
+	let resolved;
+	try {
+		resolved = await resolveKb(store, workspaceUid, job.knowledgeBaseUid);
+	} catch (err) {
+		await failJob(
+			jobs,
+			workspaceUid,
+			jobId,
+			`kb resolution failed: ${safeErrorMessage(err)}`,
+		);
+		return;
+	}
+
+	try {
+		await jobs.update(workspaceUid, jobId, {
+			status: "running",
+			leasedBy: replicaId,
+			leasedAt: new Date().toISOString(),
+		});
+		const result = await runKbIngest(
+			{ store, drivers, embedders },
+			{
+				workspace: resolved.workspace,
+				knowledgeBase: resolved.knowledgeBase,
+				descriptor: resolved.descriptor,
+				documentUid: job.documentUid,
+			},
+			input,
+			(p) => {
+				void jobs
+					.update(workspaceUid, jobId, {
+						processed: p.processed,
+						total: p.total,
+						leasedAt: new Date().toISOString(),
+					})
+					.catch(() => undefined);
+			},
+		);
+		await jobs.update(workspaceUid, jobId, {
+			status: "succeeded",
+			result: { chunks: result.chunks },
+			leasedBy: null,
+			leasedAt: null,
+		});
+	} catch (err) {
+		await jobs
+			.update(workspaceUid, jobId, {
+				status: "failed",
+				errorMessage: safeErrorMessage(err),
+				leasedBy: null,
+				leasedAt: null,
+			})
+			.catch(() => undefined);
+	}
 }

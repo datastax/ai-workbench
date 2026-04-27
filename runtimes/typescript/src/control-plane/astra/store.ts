@@ -37,6 +37,12 @@ import {
 	embeddingServiceToRow,
 	knowledgeBaseFromRow,
 	knowledgeBaseToRow,
+	ragDocumentByHashFromRow,
+	ragDocumentByHashToRow,
+	ragDocumentByStatusFromRow,
+	ragDocumentByStatusToRow,
+	ragDocumentFromRow,
+	ragDocumentToRow,
 	rerankingServiceFromRow,
 	rerankingServiceToRow,
 	vectorStoreFromRow,
@@ -70,6 +76,7 @@ import type {
 	CreateDocumentInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
+	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
@@ -79,6 +86,7 @@ import type {
 	UpdateDocumentInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
+	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
@@ -90,6 +98,7 @@ import type {
 	DocumentRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	RagDocumentRecord,
 	RerankingServiceRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
@@ -184,6 +193,8 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			this.tables.chunkingServices.deleteMany({ workspace_id: uid }),
 			this.tables.embeddingServices.deleteMany({ workspace_id: uid }),
 			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
+			this.tables.ragDocuments.deleteMany({ workspace_id: uid }),
+			this.tables.ragDocumentsByStatus.deleteMany({ workspace_id: uid }),
 		]);
 		return { deleted: true };
 	}
@@ -702,7 +713,228 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			workspace_id: workspace,
 			knowledge_base_id: uid,
 		});
+		// Cascade RAG document rows + secondary indexes. Underlying vector
+		// collection cleanup is the caller's responsibility (KB delete
+		// route handles it).
+		await Promise.all([
+			this.tables.ragDocuments.deleteMany({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			}),
+			this.tables.ragDocumentsByStatus.deleteMany({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			}),
+		]);
 		return { deleted: true };
+	}
+
+	/* ---------------- RAG documents (KB-scoped) ---------------- */
+
+	async listRagDocuments(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly RagDocumentRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const rows = await this.tables.ragDocuments
+			.find({ workspace_id: workspace, knowledge_base_id: knowledgeBase })
+			.toArray();
+		return rows.map(ragDocumentFromRow);
+	}
+
+	async getRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const row = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		return row ? ragDocumentFromRow(row) : null;
+	}
+
+	async createRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.ragDocuments.findOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+			);
+		}
+		const now = nowIso();
+		const record: RagDocumentRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: knowledgeBase,
+			documentId: uid,
+			sourceDocId: input.sourceDocId ?? null,
+			sourceFilename: input.sourceFilename ?? null,
+			fileType: input.fileType ?? null,
+			fileSize: input.fileSize ?? null,
+			contentHash: input.contentHash ?? null,
+			chunkTotal: input.chunkTotal ?? null,
+			ingestedAt: input.ingestedAt ?? null,
+			updatedAt: now,
+			status: input.status ?? "pending",
+			errorMessage: input.errorMessage ?? null,
+			metadata: { ...(input.metadata ?? {}) },
+		};
+		await this.tables.ragDocuments.insertOne(ragDocumentToRow(record));
+		await this.writeRagStatusIndex(record);
+		if (record.contentHash) {
+			await this.tables.ragDocumentsByHash.insertOne(
+				ragDocumentByHashToRow({
+					contentHash: record.contentHash,
+					workspaceId: record.workspaceId,
+					knowledgeBaseId: record.knowledgeBaseId,
+					documentId: record.documentId,
+				}),
+			);
+		}
+		return record;
+	}
+
+	async updateRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("document", uid);
+		const base = ragDocumentFromRow(existing);
+		const next: RagDocumentRecord = {
+			...base,
+			...(patch.sourceDocId !== undefined && {
+				sourceDocId: patch.sourceDocId,
+			}),
+			...(patch.sourceFilename !== undefined && {
+				sourceFilename: patch.sourceFilename,
+			}),
+			...(patch.fileType !== undefined && { fileType: patch.fileType }),
+			...(patch.fileSize !== undefined && { fileSize: patch.fileSize }),
+			...(patch.contentHash !== undefined && {
+				contentHash: patch.contentHash,
+			}),
+			...(patch.chunkTotal !== undefined && { chunkTotal: patch.chunkTotal }),
+			...(patch.ingestedAt !== undefined && { ingestedAt: patch.ingestedAt }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.errorMessage !== undefined && {
+				errorMessage: patch.errorMessage,
+			}),
+			...(patch.metadata !== undefined && {
+				metadata: { ...patch.metadata },
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = ragDocumentToRow(next);
+		const {
+			workspace_id: _w,
+			knowledge_base_id: _k,
+			document_id: _d,
+			...fields
+		} = nextRow;
+		await this.tables.ragDocuments.updateOne(
+			{
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			},
+			{ $set: fields },
+		);
+		// Status index — drop the old row when status changed, write the new.
+		if (base.status !== next.status) {
+			await this.tables.ragDocumentsByStatus.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				status: base.status,
+				document_id: uid,
+			});
+		}
+		await this.writeRagStatusIndex(next);
+		// Hash index updates only when content_hash changed.
+		if (base.contentHash !== next.contentHash) {
+			if (base.contentHash) {
+				await this.tables.ragDocumentsByHash.deleteOne({
+					content_hash: base.contentHash,
+				});
+			}
+			if (next.contentHash) {
+				await this.tables.ragDocumentsByHash.insertOne(
+					ragDocumentByHashToRow({
+						contentHash: next.contentHash,
+						workspaceId: next.workspaceId,
+						knowledgeBaseId: next.knowledgeBaseId,
+						documentId: next.documentId,
+					}),
+				);
+			}
+		}
+		return next;
+	}
+
+	async deleteRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		const base = ragDocumentFromRow(existing);
+		await Promise.all([
+			this.tables.ragDocuments.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			}),
+			this.tables.ragDocumentsByStatus.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				status: base.status,
+				document_id: uid,
+			}),
+			base.contentHash
+				? this.tables.ragDocumentsByHash.deleteOne({
+						content_hash: base.contentHash,
+					})
+				: Promise.resolve(),
+		]);
+		return { deleted: true };
+	}
+
+	private async writeRagStatusIndex(rec: RagDocumentRecord): Promise<void> {
+		await this.tables.ragDocumentsByStatus.insertOne(
+			ragDocumentByStatusToRow({
+				workspaceId: rec.workspaceId,
+				knowledgeBaseId: rec.knowledgeBaseId,
+				status: rec.status,
+				documentId: rec.documentId,
+				sourceFilename: rec.sourceFilename,
+				ingestedAt: rec.ingestedAt,
+			}),
+		);
 	}
 
 	/* ---------------- Chunking services ---------------- */
@@ -1115,6 +1347,20 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			uid: vectorStore,
 		});
 		if (!row) throw new ControlPlaneNotFoundError("vector store", vectorStore);
+	}
+
+	private async assertKnowledgeBase(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.knowledgeBases.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+		});
+		if (!row) {
+			throw new ControlPlaneNotFoundError("knowledge base", knowledgeBase);
+		}
 	}
 
 	private async assertVectorStoreNotReferenced(
