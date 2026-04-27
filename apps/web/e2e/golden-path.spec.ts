@@ -68,9 +68,10 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 		`/api/v1/workspaces/${workspaceUid}/chunking-services`,
 		{ data: { name: "default-chunker", engine: "docling" } },
 	);
-	expect(chunkRes.ok(), `chunking-service create: ${await chunkRes.text()}`).toBe(
-		true,
-	);
+	expect(
+		chunkRes.ok(),
+		`chunking-service create: ${await chunkRes.text()}`,
+	).toBe(true);
 	const chunk = await chunkRes.json();
 
 	const kbRes = await request.post(
