@@ -588,7 +588,6 @@ describe("KB document routes", () => {
 		const body = await json(res);
 		expect(body.job.status).toBe("pending");
 		expect(body.job.knowledgeBaseUid).toBe(kbId);
-		expect(body.job.catalogUid).toBeNull();
 		expect(body.document.knowledgeBaseId).toBe(kbId);
 	});
 

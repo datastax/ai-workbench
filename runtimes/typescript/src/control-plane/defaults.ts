@@ -4,8 +4,6 @@
  * all produce structurally identical records for identical input.
  */
 
-import { ControlPlaneConflictError } from "./errors.js";
-import type { UpdateVectorStoreInput } from "./store.js";
 import type {
 	AuthType,
 	DistanceMetric,
@@ -13,10 +11,7 @@ import type {
 	LexicalConfig,
 	RerankingConfig,
 	ServiceStatus,
-	VectorSimilarity,
 } from "./types.js";
-
-export const DEFAULT_SIMILARITY: VectorSimilarity = "cosine";
 
 /* ---- Knowledge-Base schema defaults (issue #98) ---- */
 
@@ -85,18 +80,3 @@ export function byCreatedAtThenKeyId<
 	return 0;
 }
 
-/**
- * Vector-store descriptors mirror real collections. Mutating any
- * collection-defining field in-place would make the control plane lie
- * about the data plane, so updates are intentionally rejected until a
- * real migration/reconcile endpoint exists.
- */
-export function assertVectorStorePatchIsEmpty(
-	patch: UpdateVectorStoreInput,
-): void {
-	const keys = Object.keys(patch);
-	if (keys.length === 0) return;
-	throw new ControlPlaneConflictError(
-		`vector-store descriptors are immutable after creation; attempted to update ${keys.join(", ")}. Create a new vector store or use a future migration endpoint.`,
-	);
-}

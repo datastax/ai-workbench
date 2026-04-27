@@ -166,39 +166,6 @@ export const UpdateWorkspaceInputSchema = z
 	.strict()
 	.openapi("UpdateWorkspaceInput");
 
-/* ---------------- Catalog ---------------- */
-
-export const CatalogRecordSchema = z
-	.object({
-		workspace: z.string().uuid(),
-		uid: z.string().uuid(),
-		name: z.string(),
-		description: z.string().nullable(),
-		vectorStore: z.string().uuid().nullable(),
-		createdAt: z.string(),
-		updatedAt: z.string(),
-	})
-	.openapi("Catalog");
-
-export const CatalogPageSchema = pageSchema("CatalogPage", CatalogRecordSchema);
-
-export const CreateCatalogInputSchema = z
-	.object({
-		uid: z.string().uuid().optional(),
-		name: z.string().min(1),
-		description: z.string().nullable().optional(),
-		vectorStore: z.string().uuid().nullable().optional(),
-	})
-	.openapi("CreateCatalogInput");
-
-export const UpdateCatalogInputSchema = z
-	.object({
-		name: z.string().min(1).optional(),
-		description: z.string().nullable().optional(),
-		vectorStore: z.string().uuid().nullable().optional(),
-	})
-	.openapi("UpdateCatalogInput");
-
 /* ---------------- Workspace actions ---------------- */
 
 export const TestConnectionResponseSchema = z
@@ -212,64 +179,7 @@ export const TestConnectionResponseSchema = z
 	})
 	.openapi("TestConnectionResponse");
 
-/* ---------------- Document ---------------- */
-
-export const DocumentRecordSchema = z
-	.object({
-		workspace: z.string().uuid(),
-		catalogUid: z.string().uuid(),
-		documentUid: z.string().uuid(),
-		sourceDocId: z.string().nullable(),
-		sourceFilename: z.string().nullable(),
-		fileType: z.string().nullable(),
-		fileSize: z.number().int().nonnegative().nullable(),
-		md5Hash: z.string().nullable(),
-		chunkTotal: z.number().int().nonnegative().nullable(),
-		ingestedAt: z.string().nullable(),
-		updatedAt: z.string(),
-		status: DocumentStatusSchema,
-		errorMessage: z.string().nullable(),
-		metadata: z.record(z.string(), z.string()),
-	})
-	.openapi("Document");
-
-export const DocumentPageSchema = pageSchema(
-	"DocumentPage",
-	DocumentRecordSchema,
-);
-
-export const CreateDocumentInputSchema = z
-	.object({
-		uid: z.string().uuid().optional(),
-		sourceDocId: z.string().nullable().optional(),
-		sourceFilename: z.string().nullable().optional(),
-		fileType: z.string().nullable().optional(),
-		fileSize: z.number().int().nonnegative().nullable().optional(),
-		md5Hash: z.string().nullable().optional(),
-		chunkTotal: z.number().int().nonnegative().nullable().optional(),
-		ingestedAt: z.string().nullable().optional(),
-		status: DocumentStatusSchema.optional(),
-		errorMessage: z.string().nullable().optional(),
-		metadata: z.record(z.string(), z.string()).optional(),
-	})
-	.openapi("CreateDocumentInput");
-
-export const UpdateDocumentInputSchema = z
-	.object({
-		sourceDocId: z.string().nullable().optional(),
-		sourceFilename: z.string().nullable().optional(),
-		fileType: z.string().nullable().optional(),
-		fileSize: z.number().int().nonnegative().nullable().optional(),
-		md5Hash: z.string().nullable().optional(),
-		chunkTotal: z.number().int().nonnegative().nullable().optional(),
-		ingestedAt: z.string().nullable().optional(),
-		status: DocumentStatusSchema.optional(),
-		errorMessage: z.string().nullable().optional(),
-		metadata: z.record(z.string(), z.string()).optional(),
-	})
-	.openapi("UpdateDocumentInput");
-
-/* ---------------- Vector store ---------------- */
+/* ---------------- Driver descriptor (internal — no longer wire-facing) ---------------- */
 
 const EmbeddingConfigSchema = z
 	.object({
@@ -299,42 +209,10 @@ const RerankingConfigSchema = z
 	})
 	.openapi("RerankingConfig");
 
-export const VectorStoreRecordSchema = z
-	.object({
-		workspace: z.string().uuid(),
-		uid: z.string().uuid(),
-		name: z.string(),
-		vectorDimension: z.number().int().positive(),
-		vectorSimilarity: VectorSimilarity,
-		embedding: EmbeddingConfigSchema,
-		lexical: LexicalConfigSchema,
-		reranking: RerankingConfigSchema,
-		createdAt: z.string(),
-		updatedAt: z.string(),
-	})
-	.openapi("VectorStore");
-
-export const VectorStorePageSchema = pageSchema(
-	"VectorStorePage",
-	VectorStoreRecordSchema,
-);
-
-export const CreateVectorStoreInputSchema = z
-	.object({
-		uid: z.string().uuid().optional(),
-		name: z.string().min(1),
-		vectorDimension: z.number().int().positive(),
-		vectorSimilarity: VectorSimilarity.optional(),
-		embedding: EmbeddingConfigSchema,
-		lexical: LexicalConfigSchema.optional(),
-		reranking: RerankingConfigSchema.optional(),
-	})
-	.openapi("CreateVectorStoreInput");
-
 /**
  * One chunk listed under a document by
- * `GET .../catalogs/{c}/documents/{d}/chunks`. The route reads
- * raw records out of the bound vector store, filters by
+ * `GET .../knowledge-bases/{kb}/documents/{d}/chunks`. The route
+ * reads raw records out of the KB's vector collection, filters by
  * `documentUid`, and surfaces a flat list. Text comes from the
  * `chunkText` payload key the ingest pipeline stamps.
  */
@@ -347,54 +225,7 @@ export const DocumentChunkSchema = z
 	})
 	.openapi("DocumentChunk");
 
-/**
- * One row in `GET .../vector-stores/discoverable`. Mirrors the
- * driver-layer `AdoptableCollection` minus filtering — the route
- * already strips collections that are present in the descriptor table.
- */
-export const AdoptableCollectionSchema = z
-	.object({
-		name: z.string(),
-		vectorDimension: z.number().int().positive(),
-		vectorSimilarity: VectorSimilarity,
-		embedding: z
-			.object({
-				provider: z.string(),
-				model: z.string(),
-			})
-			.nullable(),
-		lexicalEnabled: z.boolean(),
-		rerankEnabled: z.boolean(),
-		rerankProvider: z.string().nullable(),
-		rerankModel: z.string().nullable(),
-	})
-	.openapi("AdoptableCollection");
-
-/**
- * Body of `POST .../vector-stores/adopt`. The descriptor's `name`
- * must match the data-plane collection name on adoption — the
- * existing `collectionName(descriptor)` mapping returns
- * `descriptor.name` when it satisfies Astra's identifier rules
- * (which it does by construction since the value came from Astra).
- */
-export const AdoptCollectionInputSchema = z
-	.object({
-		collectionName: z.string().min(1),
-	})
-	.openapi("AdoptCollectionInput");
-
-export const UpdateVectorStoreInputSchema = z
-	.object({
-		name: z.string().min(1).optional(),
-		vectorDimension: z.number().int().positive().optional(),
-		vectorSimilarity: VectorSimilarity.optional(),
-		embedding: EmbeddingConfigSchema.optional(),
-		lexical: LexicalConfigSchema.optional(),
-		reranking: RerankingConfigSchema.optional(),
-	})
-	.openapi("UpdateVectorStoreInput");
-
-/* ---------------- Vector-store data plane ---------------- */
+/* ---------------- KB data plane (upsert + search) ---------------- */
 
 /**
  * Input shape for upsert. Each record carries either a `vector` OR
@@ -485,41 +316,6 @@ export const IngestChunkerOptionsSchema = z
 	})
 	.openapi("IngestChunkerOptions");
 
-/**
- * Ingest one document's worth of raw text. The runtime chunks the text,
- * embeds each chunk (server-side via `$vectorize` if the vector store
- * supports it, otherwise client-side), and upserts the chunks into the
- * catalog's bound vector store. A {@link Document} metadata row is
- * created alongside — caller can omit `uid` to have one generated.
- */
-export const IngestRequestSchema = z
-	.object({
-		/** Raw text to chunk. Required; empty strings are rejected. */
-		text: z.string().min(1).max(MAX_INGEST_TEXT_CHARS),
-		/** Optional UID for the created document — generated if omitted. */
-		uid: z.string().uuid().optional(),
-		sourceDocId: z.string().nullable().optional(),
-		sourceFilename: z.string().nullable().optional(),
-		fileType: z.string().nullable().optional(),
-		fileSize: z.number().int().nonnegative().nullable().optional(),
-		md5Hash: z.string().nullable().optional(),
-		/** Merged onto every chunk record's payload. `catalogUid` and
-		 * `documentUid` are reserved and always overridden by the runtime. */
-		metadata: z.record(z.string(), z.string()).optional(),
-		/** Override the default chunker options. */
-		chunker: IngestChunkerOptionsSchema.optional(),
-	})
-	.openapi("IngestRequest");
-
-export const IngestResponseSchema = z
-	.object({
-		document: DocumentRecordSchema,
-		/** Number of chunks produced and upserted. Equals
-		 * `document.chunkTotal` on success. */
-		chunks: z.number().int().nonnegative(),
-	})
-	.openapi("IngestResponse");
-
 /** Lifecycle of a background job. */
 export const JobStatusSchema = z
 	.enum(["pending", "running", "succeeded", "failed"])
@@ -530,7 +326,6 @@ export const JobRecordSchema = z
 		workspace: z.string().uuid(),
 		jobId: z.string().uuid(),
 		kind: z.enum(["ingest"]),
-		catalogUid: z.string().uuid().nullable(),
 		knowledgeBaseUid: z.string().uuid().nullable(),
 		documentUid: z.string().uuid().nullable(),
 		status: JobStatusSchema,
@@ -542,18 +337,6 @@ export const JobRecordSchema = z
 		updatedAt: z.string(),
 	})
 	.openapi("Job");
-
-/**
- * 202 envelope for `POST /ingest?async=true`. Returns both the
- * freshly-created job and the document row — callers can track
- * either; they stay in sync as the pipeline progresses.
- */
-export const AsyncIngestResponseSchema = z
-	.object({
-		job: JobRecordSchema,
-		document: DocumentRecordSchema,
-	})
-	.openapi("AsyncIngestResponse");
 
 export const JobIdParamSchema = z
 	.string()
@@ -573,27 +356,11 @@ export const WorkspaceUidParamSchema = z
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const CatalogUidParamSchema = z
-	.string()
-	.uuid()
-	.openapi({
-		param: { name: "catalogUid", in: "path" },
-		example: "00000000-0000-0000-0000-000000000000",
-	});
-
 export const DocumentUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
 		param: { name: "documentUid", in: "path" },
-		example: "00000000-0000-0000-0000-000000000000",
-	});
-
-export const VectorStoreUidParamSchema = z
-	.string()
-	.uuid()
-	.openapi({
-		param: { name: "vectorStoreUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
@@ -1012,9 +779,9 @@ export const UpdateRagDocumentInputSchema =
 		.openapi("UpdateRagDocumentInput");
 
 /**
- * KB-scoped ingest request. Same content as the legacy catalog-scoped
- * version, but `metadata` reserves `knowledgeBaseUid` / `documentUid`
- * instead of `catalogUid` / `documentUid`.
+ * KB-scoped ingest request. `metadata` reserves `knowledgeBaseUid` /
+ * `documentUid` (the runtime overrides any caller-supplied values
+ * with the path-resolved KB and the freshly created document row).
  */
 export const KbIngestRequestSchema = z
 	.object({

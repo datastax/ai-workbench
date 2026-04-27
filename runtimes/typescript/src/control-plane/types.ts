@@ -63,18 +63,6 @@ export interface WorkspaceRecord {
 	readonly updatedAt: string;
 }
 
-/** A named, declarative grouping of documents bound to one vector store. */
-export interface CatalogRecord {
-	readonly workspace: string;
-	readonly uid: string;
-	readonly name: string;
-	readonly description: string | null;
-	/** UUID of the vector store this catalog writes into. */
-	readonly vectorStore: string | null;
-	readonly createdAt: string;
-	readonly updatedAt: string;
-}
-
 /**
  * Workspace-scoped API key. Persisted on create, looked up by
  * `prefix` on every authenticated request, compared by
@@ -106,24 +94,6 @@ export interface ApiKeyRecord {
 	readonly expiresAt: string | null;
 }
 
-/** Metadata about an ingested document. */
-export interface DocumentRecord {
-	readonly workspace: string;
-	readonly catalogUid: string;
-	readonly documentUid: string;
-	readonly sourceDocId: string | null;
-	readonly sourceFilename: string | null;
-	readonly fileType: string | null;
-	readonly fileSize: number | null;
-	readonly md5Hash: string | null;
-	readonly chunkTotal: number | null;
-	readonly ingestedAt: string | null;
-	readonly updatedAt: string;
-	readonly status: DocumentStatus;
-	readonly errorMessage: string | null;
-	readonly metadata: Readonly<Record<string, string>>;
-}
-
 /** Embedding configuration for a vector store. */
 export interface EmbeddingConfig {
 	readonly provider: string;
@@ -149,7 +119,13 @@ export interface RerankingConfig {
 	readonly secretRef: SecretRef | null;
 }
 
-/** A vector store (collection) owned by a workspace. */
+/**
+ * Driver-facing descriptor of a vector collection. The control plane
+ * doesn't persist these directly — they're synthesised on demand from
+ * a {@link KnowledgeBaseRecord} plus its bound embedding/reranking
+ * services. Drivers and the search/upsert dispatch layers consume this
+ * shape so they don't need to know KBs exist.
+ */
 export interface VectorStoreRecord {
 	readonly workspace: string;
 	readonly uid: string;
@@ -165,11 +141,10 @@ export interface VectorStoreRecord {
 
 /* ================================================================== */
 /*                                                                    */
-/* Knowledge-Base records (issue #98) — additive in phase 1a.         */
+/* Knowledge-Base records (issue #98).                                */
 /*                                                                    */
-/* Mirror the new `wb_config_*` / `wb_rag_*` / `wb_agentic_*` tables  */
-/* in camelCase. Phase 1b switches the routes to these; phase 1c      */
-/* removes the legacy types above.                                    */
+/* Mirror the `wb_config_*` / `wb_rag_*` / `wb_agentic_*` tables in   */
+/* camelCase.                                                         */
 /*                                                                    */
 /* ================================================================== */
 

@@ -46,19 +46,16 @@ export function isTerminal(status: JobStatus): boolean {
 
 /**
  * Canonical job record. Workspace-scoped so authorization reuses the
- * existing `assertWorkspaceAccess`; `catalogUid` + `documentUid` are
- * attached for ingest jobs so the UI can link back to the catalog
- * without an extra fetch.
+ * existing `assertWorkspaceAccess`; `knowledgeBaseUid` + `documentUid`
+ * are attached for ingest jobs so the UI can link back without an
+ * extra fetch.
  */
 export interface JobRecord {
 	readonly workspace: string;
 	readonly jobId: string;
 	readonly kind: JobKind;
-	/** For legacy catalog-scoped ingest jobs — the catalog the document
-	 * was ingested into. KB-scoped jobs leave this null. */
-	readonly catalogUid: string | null;
-	/** For KB-scoped ingest jobs — the knowledge base the document was
-	 * ingested into. Catalog-scoped jobs leave this null. */
+	/** For ingest jobs — the knowledge base the document was ingested
+	 * into. */
 	readonly knowledgeBaseUid: string | null;
 	/** For ingest jobs — the document row that tracks status in parallel. */
 	readonly documentUid: string | null;
@@ -125,7 +122,6 @@ export interface UpdateJobInput {
 export interface CreateJobInput {
 	readonly workspace: string;
 	readonly kind: JobKind;
-	readonly catalogUid?: string | null;
 	readonly knowledgeBaseUid?: string | null;
 	readonly documentUid?: string | null;
 	/** Optional job id — generated if omitted. */

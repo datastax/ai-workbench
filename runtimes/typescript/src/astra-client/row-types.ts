@@ -36,39 +36,6 @@ export interface WorkspaceRow {
 	updated_at: Iso;
 }
 
-export interface CatalogRow {
-	workspace: Uuid;
-	uid: Uuid;
-	name: string;
-	description: string | null;
-	vector_store: Uuid | null;
-	created_at: Iso;
-	updated_at: Iso;
-}
-
-export interface VectorStoreRow {
-	workspace: Uuid;
-	uid: Uuid;
-	name: string;
-	vector_dimension: number;
-	vector_similarity: VectorSimilarity;
-	embedding_provider: string;
-	embedding_model: string;
-	embedding_endpoint: string | null;
-	embedding_dimension: number;
-	embedding_secret_ref: string | null;
-	lexical_enabled: boolean;
-	lexical_analyzer: string | null;
-	lexical_options: Record<string, string>;
-	reranking_enabled: boolean;
-	reranking_provider: string | null;
-	reranking_model: string | null;
-	reranking_endpoint: string | null;
-	reranking_secret_ref: string | null;
-	created_at: Iso;
-	updated_at: Iso;
-}
-
 export interface ApiKeyRow {
 	workspace: Uuid;
 	key_id: Uuid;
@@ -87,25 +54,8 @@ export interface ApiKeyLookupRow {
 	key_id: Uuid;
 }
 
-export interface DocumentRow {
-	workspace: Uuid;
-	catalog_uid: Uuid;
-	document_uid: Uuid;
-	source_doc_id: string | null;
-	source_filename: string | null;
-	file_type: string | null;
-	file_size: number | null;
-	md5_hash: string | null;
-	chunk_total: number | null;
-	ingested_at: Iso | null;
-	updated_at: Iso;
-	status: DocumentStatus;
-	error_message: string | null;
-	metadata: Record<string, string>;
-}
-
 /* ================================================================== */
-/* Knowledge-Base schema row shapes (issue #98) — additive in 1a.     */
+/* Knowledge-Base schema row shapes (issue #98).                      */
 /* ================================================================== */
 
 /** `wb_config_workspaces` row (replaces `WorkspaceRow`). */
@@ -350,7 +300,6 @@ export interface JobRow {
 	workspace: Uuid;
 	job_id: Uuid;
 	kind: string;
-	catalog_uid: Uuid | null;
 	knowledge_base_uid: Uuid | null;
 	document_uid: Uuid | null;
 	status: string;

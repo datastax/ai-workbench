@@ -22,11 +22,9 @@ import type {
 	AgentRow,
 	ApiKeyLookupRow,
 	ApiKeyRow,
-	CatalogRow,
 	ChunkingServiceRow,
 	ConfigWorkspaceRow,
 	ConversationRow,
-	DocumentRow,
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
@@ -37,7 +35,6 @@ import type {
 	RagDocumentByStatusRow,
 	RagDocumentRow,
 	RerankingServiceRow,
-	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
 
@@ -63,13 +60,10 @@ export interface Cursor<Row extends SomeRow> {
  */
 export interface TablesBundle {
 	readonly workspaces: TableLike<WorkspaceRow>;
-	readonly catalogs: TableLike<CatalogRow>;
-	readonly vectorStores: TableLike<VectorStoreRow>;
-	readonly documents: TableLike<DocumentRow>;
 	readonly jobs: TableLike<JobRow>;
 	readonly apiKeys: TableLike<ApiKeyRow>;
 	readonly apiKeyLookup: TableLike<ApiKeyLookupRow>;
-	/* ---- knowledge-base schema (issue #98), additive in phase 1a ---- */
+	/* ---- knowledge-base schema (issue #98) ---- */
 	readonly configWorkspaces: TableLike<ConfigWorkspaceRow>;
 	readonly knowledgeBases: TableLike<KnowledgeBaseRow>;
 	readonly chunkingServices: TableLike<ChunkingServiceRow>;

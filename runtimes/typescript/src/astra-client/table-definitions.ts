@@ -29,57 +29,6 @@ export const WORKSPACES_DEFINITION = {
 	primaryKey: "uid",
 } as const satisfies CreateTableDefinition;
 
-/** `wb_catalog_by_workspace` — catalogs, partitioned by workspace. */
-export const CATALOGS_TABLE = "wb_catalog_by_workspace";
-export const CATALOGS_DEFINITION = {
-	columns: {
-		workspace: "uuid",
-		uid: "uuid",
-		name: "text",
-		description: "text",
-		vector_store: "uuid",
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: {
-		partitionBy: ["workspace"],
-		partitionSort: { uid: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
-/** `wb_vector_store_by_workspace` — the DEFINITION row for a vector
- * store. The actual vector data lives in a Data API Collection created
- * separately in Phase 1b. */
-export const VECTOR_STORES_TABLE = "wb_vector_store_by_workspace";
-export const VECTOR_STORES_DEFINITION = {
-	columns: {
-		workspace: "uuid",
-		uid: "uuid",
-		name: "text",
-		vector_dimension: "int",
-		vector_similarity: "text",
-		embedding_provider: "text",
-		embedding_model: "text",
-		embedding_endpoint: "text",
-		embedding_dimension: "int",
-		embedding_secret_ref: "text",
-		lexical_enabled: "boolean",
-		lexical_analyzer: "text",
-		lexical_options: { type: "map", keyType: "text", valueType: "text" },
-		reranking_enabled: "boolean",
-		reranking_provider: "text",
-		reranking_model: "text",
-		reranking_endpoint: "text",
-		reranking_secret_ref: "text",
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: {
-		partitionBy: ["workspace"],
-		partitionSort: { uid: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
 /**
  * `wb_api_key_by_workspace` — per-workspace list of API keys. The
  * stored `hash` is a scrypt digest; plaintext is never written. Walked
@@ -120,41 +69,9 @@ export const API_KEY_LOOKUP_DEFINITION = {
 	primaryKey: "prefix",
 } as const satisfies CreateTableDefinition;
 
-/** `wb_documents_by_catalog` — documents, partitioned by (workspace, catalog). */
-export const DOCUMENTS_TABLE = "wb_documents_by_catalog";
-export const DOCUMENTS_DEFINITION = {
-	columns: {
-		workspace: "uuid",
-		catalog_uid: "uuid",
-		document_uid: "uuid",
-		source_doc_id: "text",
-		source_filename: "text",
-		file_type: "text",
-		file_size: "bigint",
-		md5_hash: "text",
-		chunk_total: "int",
-		ingested_at: "timestamp",
-		updated_at: "timestamp",
-		status: "text",
-		error_message: "text",
-		metadata: { type: "map", keyType: "text", valueType: "text" },
-	},
-	primaryKey: {
-		partitionBy: ["workspace", "catalog_uid"],
-		partitionSort: { document_uid: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
-
 /* ================================================================== */
 /*                                                                    */
-/*  Knowledge-Base schema (issue #98) — additive in phase 1a.         */
-/*                                                                    */
-/*  These tables coexist with the legacy `wb_workspaces` /            */
-/*  `wb_catalog_by_workspace` / `wb_vector_store_by_workspace` /      */
-/*  `wb_documents_by_catalog` / `wb_saved_queries_by_catalog` set.    */
-/*  Phase 1b switches the routes to read/write these instead; phase   */
-/*  1c drops the legacy tables.                                       */
+/*  Knowledge-Base schema (issue #98).                                */
 /*                                                                    */
 /*  Three layers, mirroring the CQL the design proposes:              */
 /*    • config — workspaces, knowledge bases, execution services      */
@@ -561,9 +478,6 @@ export const JOBS_DEFINITION = {
 		workspace: "uuid",
 		job_id: "uuid",
 		kind: "text",
-		catalog_uid: "uuid",
-		// KB-scoped ingest jobs (issue #98) record the knowledge base
-		// instead of a catalog. Mutually exclusive with `catalog_uid`.
 		knowledge_base_uid: "uuid",
 		document_uid: "uuid",
 		status: "text",

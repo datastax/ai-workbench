@@ -12,11 +12,9 @@ import type {
 	AgentRow,
 	ApiKeyLookupRow,
 	ApiKeyRow,
-	CatalogRow,
 	ChunkingServiceRow,
 	ConfigWorkspaceRow,
 	ConversationRow,
-	DocumentRow,
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
@@ -27,7 +25,6 @@ import type {
 	RagDocumentByStatusRow,
 	RagDocumentRow,
 	RerankingServiceRow,
-	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
 import {
@@ -37,16 +34,12 @@ import {
 	API_KEY_LOOKUP_TABLE,
 	API_KEYS_DEFINITION,
 	API_KEYS_TABLE,
-	CATALOGS_DEFINITION,
-	CATALOGS_TABLE,
 	CHUNKING_SERVICES_DEFINITION,
 	CHUNKING_SERVICES_TABLE,
 	CONFIG_WORKSPACES_DEFINITION,
 	CONFIG_WORKSPACES_TABLE,
 	CONVERSATIONS_DEFINITION,
 	CONVERSATIONS_TABLE,
-	DOCUMENTS_DEFINITION,
-	DOCUMENTS_TABLE,
 	EMBEDDING_SERVICES_DEFINITION,
 	EMBEDDING_SERVICES_TABLE,
 	JOBS_DEFINITION,
@@ -67,8 +60,6 @@ import {
 	RAG_DOCUMENTS_TABLE,
 	RERANKING_SERVICES_DEFINITION,
 	RERANKING_SERVICES_TABLE,
-	VECTOR_STORES_DEFINITION,
-	VECTOR_STORES_TABLE,
 	WORKSPACES_DEFINITION,
 	WORKSPACES_TABLE,
 } from "./table-definitions.js";
@@ -97,13 +88,10 @@ export async function openAstraClient(
 
 	return {
 		workspaces: db.table<WorkspaceRow>(WORKSPACES_TABLE),
-		catalogs: db.table<CatalogRow>(CATALOGS_TABLE),
-		vectorStores: db.table<VectorStoreRow>(VECTOR_STORES_TABLE),
-		documents: db.table<DocumentRow>(DOCUMENTS_TABLE),
 		jobs: db.table<JobRow>(JOBS_TABLE),
 		apiKeys: db.table<ApiKeyRow>(API_KEYS_TABLE),
 		apiKeyLookup: db.table<ApiKeyLookupRow>(API_KEY_LOOKUP_TABLE),
-		// Knowledge-base schema (issue #98), additive in 1a.
+		// Knowledge-base schema (issue #98).
 		configWorkspaces: db.table<ConfigWorkspaceRow>(CONFIG_WORKSPACES_TABLE),
 		knowledgeBases: db.table<KnowledgeBaseRow>(KNOWLEDGE_BASES_TABLE),
 		chunkingServices: db.table<ChunkingServiceRow>(CHUNKING_SERVICES_TABLE),
@@ -130,18 +118,6 @@ async function ensureTables(db: Db): Promise<void> {
 			definition: WORKSPACES_DEFINITION,
 			ifNotExists: true,
 		}),
-		db.createTable(CATALOGS_TABLE, {
-			definition: CATALOGS_DEFINITION,
-			ifNotExists: true,
-		}),
-		db.createTable(VECTOR_STORES_TABLE, {
-			definition: VECTOR_STORES_DEFINITION,
-			ifNotExists: true,
-		}),
-		db.createTable(DOCUMENTS_TABLE, {
-			definition: DOCUMENTS_DEFINITION,
-			ifNotExists: true,
-		}),
 		db.createTable(JOBS_TABLE, {
 			definition: JOBS_DEFINITION,
 			ifNotExists: true,
@@ -154,8 +130,7 @@ async function ensureTables(db: Db): Promise<void> {
 			definition: API_KEY_LOOKUP_DEFINITION,
 			ifNotExists: true,
 		}),
-		// Knowledge-base schema (issue #98), additive in 1a — coexists
-		// with the legacy tables until phase 1c drops them.
+		// Knowledge-base schema (issue #98).
 		db.createTable(CONFIG_WORKSPACES_TABLE, {
 			definition: CONFIG_WORKSPACES_DEFINITION,
 			ifNotExists: true,

@@ -26,11 +26,9 @@ import type {
 	AgentRow,
 	ApiKeyLookupRow,
 	ApiKeyRow,
-	CatalogRow,
 	ChunkingServiceRow,
 	ConfigWorkspaceRow,
 	ConversationRow,
-	DocumentRow,
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
@@ -41,7 +39,6 @@ import type {
 	RagDocumentByStatusRow,
 	RagDocumentRow,
 	RerankingServiceRow,
-	VectorStoreRow,
 	WorkspaceRow,
 } from "../../src/astra-client/row-types.js";
 import type {
@@ -110,13 +107,10 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 export function createFakeTablesBundle(): TablesBundle {
 	return {
 		workspaces: new FakeTable<WorkspaceRow>(),
-		catalogs: new FakeTable<CatalogRow>(),
-		vectorStores: new FakeTable<VectorStoreRow>(),
-		documents: new FakeTable<DocumentRow>(),
 		jobs: new FakeTable<JobRow>(),
 		apiKeys: new FakeTable<ApiKeyRow>(),
 		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(),
-		// Knowledge-base schema (issue #98), additive in 1a.
+		// Knowledge-base schema (issue #98).
 		configWorkspaces: new FakeTable<ConfigWorkspaceRow>(),
 		knowledgeBases: new FakeTable<KnowledgeBaseRow>(),
 		chunkingServices: new FakeTable<ChunkingServiceRow>(),

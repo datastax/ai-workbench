@@ -17,24 +17,18 @@
 import type {
 	ApiKeyRecord,
 	AuthType,
-	CatalogRecord,
 	ChunkingServiceRecord,
 	DistanceMetric,
-	DocumentRecord,
 	DocumentStatus,
-	EmbeddingConfig,
 	EmbeddingServiceRecord,
 	KnowledgeBaseLanguage,
 	KnowledgeBaseRecord,
 	KnowledgeBaseStatus,
 	LexicalConfig,
 	RagDocumentRecord,
-	RerankingConfig,
 	RerankingServiceRecord,
 	SecretRef,
 	ServiceStatus,
-	VectorSimilarity,
-	VectorStoreRecord,
 	WorkspaceKind,
 	WorkspaceRecord,
 } from "./types.js";
@@ -64,54 +58,6 @@ export interface UpdateWorkspaceInput {
 	readonly endpoint?: string | null;
 	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Catalog                                                            */
-/* ------------------------------------------------------------------ */
-
-export interface CreateCatalogInput {
-	readonly uid?: string;
-	readonly name: string;
-	readonly description?: string | null;
-	readonly vectorStore?: string | null;
-}
-
-export interface UpdateCatalogInput {
-	readonly name?: string;
-	readonly description?: string | null;
-	readonly vectorStore?: string | null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Document                                                           */
-/* ------------------------------------------------------------------ */
-
-export interface CreateDocumentInput {
-	readonly uid?: string;
-	readonly sourceDocId?: string | null;
-	readonly sourceFilename?: string | null;
-	readonly fileType?: string | null;
-	readonly fileSize?: number | null;
-	readonly md5Hash?: string | null;
-	readonly chunkTotal?: number | null;
-	readonly ingestedAt?: string | null;
-	readonly status?: DocumentStatus;
-	readonly errorMessage?: string | null;
-	readonly metadata?: Readonly<Record<string, string>>;
-}
-
-export interface UpdateDocumentInput {
-	readonly sourceDocId?: string | null;
-	readonly sourceFilename?: string | null;
-	readonly fileType?: string | null;
-	readonly fileSize?: number | null;
-	readonly md5Hash?: string | null;
-	readonly chunkTotal?: number | null;
-	readonly ingestedAt?: string | null;
-	readonly status?: DocumentStatus;
-	readonly errorMessage?: string | null;
-	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -151,29 +97,6 @@ export interface PersistApiKeyInput {
 	readonly hash: string;
 	readonly label: string;
 	readonly expiresAt?: string | null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Vector store                                                       */
-/* ------------------------------------------------------------------ */
-
-export interface CreateVectorStoreInput {
-	readonly uid?: string;
-	readonly name: string;
-	readonly vectorDimension: number;
-	readonly vectorSimilarity?: VectorSimilarity;
-	readonly embedding: EmbeddingConfig;
-	readonly lexical?: LexicalConfig;
-	readonly reranking?: RerankingConfig;
-}
-
-export interface UpdateVectorStoreInput {
-	readonly name?: string;
-	readonly vectorDimension?: number;
-	readonly vectorSimilarity?: VectorSimilarity;
-	readonly embedding?: EmbeddingConfig;
-	readonly lexical?: LexicalConfig;
-	readonly reranking?: RerankingConfig;
 }
 
 /* ------------------------------------------------------------------ */
@@ -308,67 +231,6 @@ export interface ControlPlaneStore {
 		patch: UpdateWorkspaceInput,
 	): Promise<WorkspaceRecord>;
 	deleteWorkspace(uid: string): Promise<{ deleted: boolean }>;
-
-	/* Catalogs */
-	listCatalogs(workspace: string): Promise<readonly CatalogRecord[]>;
-	getCatalog(workspace: string, uid: string): Promise<CatalogRecord | null>;
-	createCatalog(
-		workspace: string,
-		input: CreateCatalogInput,
-	): Promise<CatalogRecord>;
-	updateCatalog(
-		workspace: string,
-		uid: string,
-		patch: UpdateCatalogInput,
-	): Promise<CatalogRecord>;
-	deleteCatalog(workspace: string, uid: string): Promise<{ deleted: boolean }>;
-
-	/* Vector stores */
-	listVectorStores(workspace: string): Promise<readonly VectorStoreRecord[]>;
-	getVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<VectorStoreRecord | null>;
-	createVectorStore(
-		workspace: string,
-		input: CreateVectorStoreInput,
-	): Promise<VectorStoreRecord>;
-	updateVectorStore(
-		workspace: string,
-		uid: string,
-		patch: UpdateVectorStoreInput,
-	): Promise<VectorStoreRecord>;
-	deleteVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
-
-	/* Documents */
-	listDocuments(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly DocumentRecord[]>;
-	getDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<DocumentRecord | null>;
-	createDocument(
-		workspace: string,
-		catalog: string,
-		input: CreateDocumentInput,
-	): Promise<DocumentRecord>;
-	updateDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateDocumentInput,
-	): Promise<DocumentRecord>;
-	deleteDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
 
 	/* API keys */
 	listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]>;
