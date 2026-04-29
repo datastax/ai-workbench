@@ -413,6 +413,7 @@ export const AGENTS_DEFINITION = {
 		system_prompt: "text",
 		user_prompt: "text",
 		tool_ids: { type: "set", valueType: "uuid" },
+		llm_service_id: "uuid",
 		rag_enabled: "boolean",
 		knowledge_base_ids: { type: "set", valueType: "uuid" },
 		rag_max_results: "int",

@@ -9,6 +9,7 @@
  *   <root>/chunking-services.json   : ChunkingServiceRecord[]
  *   <root>/embedding-services.json  : EmbeddingServiceRecord[]
  *   <root>/reranking-services.json  : RerankingServiceRecord[]
+ *   <root>/llm-services.json        : LlmServiceRecord[]
  *   <root>/rag-documents.json       : RagDocumentRecord[]
  *
  * Each mutation:
@@ -52,6 +53,7 @@ import type {
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
+	CreateLlmServiceInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -64,6 +66,7 @@ import type {
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
+	UpdateLlmServiceInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -76,6 +79,7 @@ import type {
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
+	LlmServiceRecord,
 	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -92,6 +96,7 @@ type Table =
 	| "chunking-services"
 	| "embedding-services"
 	| "reranking-services"
+	| "llm-services"
 	| "rag-documents"
 	// Chat (workspace-scoped, agentic-tables-backed).
 	| "agents"
@@ -106,6 +111,7 @@ const TABLE_FILES: Record<Table, string> = {
 	"chunking-services": "chunking-services.json",
 	"embedding-services": "embedding-services.json",
 	"reranking-services": "reranking-services.json",
+	"llm-services": "llm-services.json",
 	"rag-documents": "rag-documents.json",
 	agents: "agents.json",
 	conversations: "conversations.json",
@@ -189,6 +195,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		"chunking-services": new Mutex(),
 		"embedding-services": new Mutex(),
 		"reranking-services": new Mutex(),
+		"llm-services": new Mutex(),
 		"rag-documents": new Mutex(),
 		agents: new Mutex(),
 		conversations: new Mutex(),
@@ -317,6 +324,10 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				result: null,
 			}),
 		);
+		await this.mutate<"llm-services", null>("llm-services", (rows) => ({
+			rows: rows.filter((s) => s.workspaceId !== uid),
+			result: null,
+		}));
 		await this.mutate<"rag-documents", null>("rag-documents", (rows) => ({
 			rows: rows.filter((d) => d.workspaceId !== uid),
 			result: null,
@@ -1239,11 +1250,145 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
 		await this.assertServiceNotReferenced(workspace, "rerankingServiceId", uid);
+		await this.assertAgentServiceNotReferenced(
+			workspace,
+			"rerankingServiceId",
+			uid,
+		);
 		return this.mutate<"reranking-services", { deleted: boolean }>(
 			"reranking-services",
 			(rows) => {
 				const next = rows.filter(
 					(s) => !(s.workspaceId === workspace && s.rerankingServiceId === uid),
+				);
+				return {
+					rows: next,
+					result: { deleted: next.length !== rows.length },
+				};
+			},
+		);
+	}
+
+	/* ---------------- LLM services ---------------- */
+
+	async listLlmServices(
+		workspace: string,
+	): Promise<readonly LlmServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		const all = await this.readAll<LlmServiceRecord>("llm-services");
+		return all.filter((s) => s.workspaceId === workspace);
+	}
+
+	async getLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<LlmServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		const all = await this.readAll<LlmServiceRecord>("llm-services");
+		return (
+			all.find(
+				(s) => s.workspaceId === workspace && s.llmServiceId === uid,
+			) ?? null
+		);
+	}
+
+	async createLlmService(
+		workspace: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		return this.mutate<"llm-services", LlmServiceRecord>(
+			"llm-services",
+			(rows) => {
+				const uid = input.uid ?? randomUUID();
+				if (
+					rows.some(
+						(s) => s.workspaceId === workspace && s.llmServiceId === uid,
+					)
+				) {
+					throw new ControlPlaneConflictError(
+						`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+					);
+				}
+				const now = nowIso();
+				const record: LlmServiceRecord = {
+					workspaceId: workspace,
+					llmServiceId: uid,
+					name: input.name,
+					description: input.description ?? null,
+					status: input.status ?? DEFAULT_SERVICE_STATUS,
+					provider: input.provider,
+					engine: input.engine ?? null,
+					modelName: input.modelName,
+					modelVersion: input.modelVersion ?? null,
+					contextWindowTokens: input.contextWindowTokens ?? null,
+					maxOutputTokens: input.maxOutputTokens ?? null,
+					temperatureMin: input.temperatureMin ?? null,
+					temperatureMax: input.temperatureMax ?? null,
+					supportsStreaming: input.supportsStreaming ?? null,
+					supportsTools: input.supportsTools ?? null,
+					endpointBaseUrl: input.endpointBaseUrl ?? null,
+					endpointPath: input.endpointPath ?? null,
+					requestTimeoutMs: input.requestTimeoutMs ?? null,
+					maxBatchSize: input.maxBatchSize ?? null,
+					authType: input.authType ?? DEFAULT_AUTH_TYPE,
+					credentialRef: input.credentialRef ?? null,
+					supportedLanguages: freezeStringSet(input.supportedLanguages),
+					supportedContent: freezeStringSet(input.supportedContent),
+					createdAt: now,
+					updatedAt: now,
+				};
+				return { rows: [...rows, record], result: record };
+			},
+		);
+	}
+
+	async updateLlmService(
+		workspace: string,
+		uid: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		return this.mutate<"llm-services", LlmServiceRecord>(
+			"llm-services",
+			(rows) => {
+				const idx = rows.findIndex(
+					(s) => s.workspaceId === workspace && s.llmServiceId === uid,
+				);
+				if (idx < 0) {
+					throw new ControlPlaneNotFoundError("llm service", uid);
+				}
+				const existing = rows[idx] as LlmServiceRecord;
+				const merged = applyPatch(existing, patch, {
+					updatedAt: nowIso(),
+				});
+				const next: LlmServiceRecord = {
+					...merged,
+					...(patch.supportedLanguages !== undefined && {
+						supportedLanguages: freezeStringSet(patch.supportedLanguages),
+					}),
+					...(patch.supportedContent !== undefined && {
+						supportedContent: freezeStringSet(patch.supportedContent),
+					}),
+				};
+				const nextRows = [...rows];
+				nextRows[idx] = next;
+				return { rows: nextRows, result: next };
+			},
+		);
+	}
+
+	async deleteLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		await this.assertAgentServiceNotReferenced(workspace, "llmServiceId", uid);
+		return this.mutate<"llm-services", { deleted: boolean }>(
+			"llm-services",
+			(rows) => {
+				const next = rows.filter(
+					(s) => !(s.workspaceId === workspace && s.llmServiceId === uid),
 				);
 				return {
 					rows: next,
@@ -1280,6 +1425,12 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		input: CreateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (input.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, input.llmServiceId);
+		}
+		if (input.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, input.rerankingServiceId);
+		}
 		return this.mutate<"agents", AgentRecord>("agents", (rows) => {
 			const agentId = input.agentId ?? randomUUID();
 			if (
@@ -1298,6 +1449,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				systemPrompt: input.systemPrompt ?? null,
 				userPrompt: input.userPrompt ?? null,
 				toolIds: freezeStringSet([]),
+				llmServiceId: input.llmServiceId ?? null,
 				ragEnabled: input.ragEnabled ?? false,
 				knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
 				ragMaxResults: input.ragMaxResults ?? null,
@@ -1318,6 +1470,12 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (patch.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, patch.llmServiceId);
+		}
+		if (patch.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, patch.rerankingServiceId);
+		}
 		return this.mutate<"agents", AgentRecord>("agents", (rows) => {
 			const idx = rows.findIndex(
 				(a) => a.workspaceId === workspaceId && a.agentId === agentId,
@@ -1336,6 +1494,9 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					systemPrompt: patch.systemPrompt,
 				}),
 				...(patch.userPrompt !== undefined && { userPrompt: patch.userPrompt }),
+				...(patch.llmServiceId !== undefined && {
+					llmServiceId: patch.llmServiceId,
+				}),
 				...(patch.knowledgeBaseIds !== undefined && {
 					knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 				}),
@@ -1564,6 +1725,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				systemPrompt: BOBBIE_SYSTEM_PROMPT,
 				userPrompt: null,
 				toolIds: Object.freeze([]),
+				llmServiceId: null,
 				ragEnabled: true,
 				knowledgeBaseIds: Object.freeze([]),
 				ragMaxResults: null,
@@ -1853,6 +2015,16 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		}
 	}
 
+	private async assertLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		const found = await this.getLlmService(workspace, uid);
+		if (!found) {
+			throw new ControlPlaneNotFoundError("llm service", uid);
+		}
+	}
+
 	private async assertServiceNotReferenced(
 		workspace: string,
 		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
@@ -1865,6 +2037,23 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
+			);
+		}
+	}
+
+	private async assertAgentServiceNotReferenced(
+		workspace: string,
+		field: "llmServiceId" | "rerankingServiceId",
+		serviceUid: string,
+	): Promise<void> {
+		const agents = await this.readAll<AgentRecord>("agents");
+		const ref = agents.find(
+			(agent) =>
+				agent.workspaceId === workspace && agent[field] === serviceUid,
+		);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`service '${serviceUid}' is referenced by agent '${ref.agentId}' (${field})`,
 			);
 		}
 	}
@@ -1906,12 +2095,14 @@ type TableRow<K extends Table> = K extends "workspaces"
 						? EmbeddingServiceRecord
 						: K extends "reranking-services"
 							? RerankingServiceRecord
-							: K extends "rag-documents"
-								? RagDocumentRecord
-								: K extends "agents"
-									? AgentRecord
-									: K extends "conversations"
-										? ConversationRecord
-										: K extends "messages"
-											? MessageRecord
-											: never;
+							: K extends "llm-services"
+								? LlmServiceRecord
+								: K extends "rag-documents"
+									? RagDocumentRecord
+									: K extends "agents"
+										? AgentRecord
+										: K extends "conversations"
+											? ConversationRecord
+											: K extends "messages"
+												? MessageRecord
+												: never;

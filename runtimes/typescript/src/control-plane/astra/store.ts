@@ -36,6 +36,8 @@ import {
 	knowledgeBaseToRow,
 	knowledgeFilterFromRow,
 	knowledgeFilterToRow,
+	llmServiceFromRow,
+	llmServiceToRow,
 	messageFromRow,
 	messageToRow,
 	ragDocumentByHashToRow,
@@ -76,6 +78,7 @@ import type {
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
+	CreateLlmServiceInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -88,6 +91,7 @@ import type {
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
+	UpdateLlmServiceInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -100,6 +104,7 @@ import type {
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
+	LlmServiceRecord,
 	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -243,6 +248,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			this.tables.chunkingServices.deleteMany({ workspace_id: uid }),
 			this.tables.embeddingServices.deleteMany({ workspace_id: uid }),
 			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
+			this.tables.llmServices.deleteMany({ workspace_id: uid }),
 			this.tables.ragDocuments.deleteMany({ workspace_id: uid }),
 			this.tables.ragDocumentsByStatus.deleteMany({ workspace_id: uid }),
 			// Chat cascade: agents → conversations → messages.
@@ -1201,6 +1207,11 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
 		await this.assertServiceNotReferenced(workspace, "rerankingServiceId", uid);
+		await this.assertAgentServiceNotReferenced(
+			workspace,
+			"rerankingServiceId",
+			uid,
+		);
 		const existing = await this.tables.rerankingServices.findOne({
 			workspace_id: workspace,
 			reranking_service_id: uid,
@@ -1209,6 +1220,133 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		await this.tables.rerankingServices.deleteOne({
 			workspace_id: workspace,
 			reranking_service_id: uid,
+		});
+		return { deleted: true };
+	}
+
+	/* ---------------- LLM services ---------------- */
+
+	async listLlmServices(
+		workspace: string,
+	): Promise<readonly LlmServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.llmServices
+			.find({ workspace_id: workspace })
+			.toArray();
+		return rows.map(llmServiceFromRow);
+	}
+
+	async getLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<LlmServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.llmServices.findOne({
+			workspace_id: workspace,
+			llm_service_id: uid,
+		});
+		return row ? llmServiceFromRow(row) : null;
+	}
+
+	async createLlmService(
+		workspace: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.llmServices.findOne({
+				workspace_id: workspace,
+				llm_service_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: LlmServiceRecord = {
+			workspaceId: workspace,
+			llmServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			engine: input.engine ?? null,
+			modelName: input.modelName,
+			modelVersion: input.modelVersion ?? null,
+			contextWindowTokens: input.contextWindowTokens ?? null,
+			maxOutputTokens: input.maxOutputTokens ?? null,
+			temperatureMin: input.temperatureMin ?? null,
+			temperatureMax: input.temperatureMax ?? null,
+			supportsStreaming: input.supportsStreaming ?? null,
+			supportsTools: input.supportsTools ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.llmServices.insertOne(llmServiceToRow(record));
+		return record;
+	}
+
+	async updateLlmService(
+		workspace: string,
+		uid: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = await this.tables.llmServices.findOne({
+			workspace_id: workspace,
+			llm_service_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("llm service", uid);
+		const base = llmServiceFromRow(existing);
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const merged: LlmServiceRecord = {
+			...base,
+			...mergeDefinedKeys(scalarPatch),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = llmServiceToRow(merged);
+		const { workspace_id: _w, llm_service_id: _id, ...fields } = nextRow;
+		await this.tables.llmServices.updateOne(
+			{ workspace_id: workspace, llm_service_id: uid },
+			{ $set: fields },
+		);
+		return merged;
+	}
+
+	async deleteLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		await this.assertAgentServiceNotReferenced(workspace, "llmServiceId", uid);
+		const existing = await this.tables.llmServices.findOne({
+			workspace_id: workspace,
+			llm_service_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.llmServices.deleteOne({
+			workspace_id: workspace,
+			llm_service_id: uid,
 		});
 		return { deleted: true };
 	}
@@ -1240,6 +1378,12 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		input: CreateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (input.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, input.llmServiceId);
+		}
+		if (input.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, input.rerankingServiceId);
+		}
 		const agentId = input.agentId ?? randomUUID();
 		const existing = await this.tables.agents.findOne({
 			workspace_id: workspaceId,
@@ -1259,6 +1403,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			systemPrompt: input.systemPrompt ?? null,
 			userPrompt: input.userPrompt ?? null,
 			toolIds: freezeStringSet([]),
+			llmServiceId: input.llmServiceId ?? null,
 			ragEnabled: input.ragEnabled ?? false,
 			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
 			ragMaxResults: input.ragMaxResults ?? null,
@@ -1279,6 +1424,12 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (patch.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, patch.llmServiceId);
+		}
+		if (patch.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, patch.rerankingServiceId);
+		}
 		const existingRow = await this.tables.agents.findOne({
 			workspace_id: workspaceId,
 			agent_id: agentId,
@@ -1297,6 +1448,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				systemPrompt: patch.systemPrompt,
 			}),
 			...(patch.userPrompt !== undefined && { userPrompt: patch.userPrompt }),
+			...(patch.llmServiceId !== undefined && {
+				llmServiceId: patch.llmServiceId,
+			}),
 			...(patch.knowledgeBaseIds !== undefined && {
 				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 			}),
@@ -1327,6 +1481,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 					description: nextRow.description,
 					system_prompt: nextRow.system_prompt,
 					user_prompt: nextRow.user_prompt,
+					llm_service_id: nextRow.llm_service_id,
 					knowledge_base_ids: nextRow.knowledge_base_ids,
 					rag_enabled: nextRow.rag_enabled,
 					rag_max_results: nextRow.rag_max_results,
@@ -1519,6 +1674,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			systemPrompt: BOBBIE_SYSTEM_PROMPT,
 			userPrompt: null,
 			toolIds: Object.freeze([]),
+			llmServiceId: null,
 			ragEnabled: true,
 			knowledgeBaseIds: Object.freeze([]),
 			ragMaxResults: null,
@@ -1795,6 +1951,17 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		if (!row) throw new ControlPlaneNotFoundError("reranking service", uid);
 	}
 
+	private async assertLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		const row = await this.tables.llmServices.findOne({
+			workspace_id: workspace,
+			llm_service_id: uid,
+		});
+		if (!row) throw new ControlPlaneNotFoundError("llm service", uid);
+	}
+
 	private async assertServiceNotReferenced(
 		workspace: string,
 		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
@@ -1813,6 +1980,32 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
+			);
+		}
+	}
+
+	/**
+	 * Refuse to delete a service that any agent in the workspace still
+	 * references on the given field. Mirrors the memory-store helper of
+	 * the same name. There's no secondary index keyed by service id, so
+	 * we read the workspace's agents and filter client-side. v0
+	 * workspaces are bounded; if agent counts grow we'll add a
+	 * `_by_service` index.
+	 */
+	private async assertAgentServiceNotReferenced(
+		workspace: string,
+		field: "llmServiceId" | "rerankingServiceId",
+		serviceUid: string,
+	): Promise<void> {
+		const rows = await this.tables.agents
+			.find({ workspace_id: workspace })
+			.toArray();
+		const fieldOnRow: keyof (typeof rows)[number] =
+			field === "llmServiceId" ? "llm_service_id" : "reranking_service_id";
+		const ref = rows.find((agent) => agent[fieldOnRow] === serviceUid);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`service '${serviceUid}' is referenced by agent '${ref.agent_id}' (${field})`,
 			);
 		}
 	}

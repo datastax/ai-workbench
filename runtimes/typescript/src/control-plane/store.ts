@@ -29,6 +29,7 @@ import type {
 	KnowledgeBaseStatus,
 	KnowledgeFilterRecord,
 	LexicalConfig,
+	LlmServiceRecord,
 	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -232,6 +233,30 @@ export type UpdateRerankingServiceInput = Partial<
 	Omit<CreateRerankingServiceInput, "uid">
 >;
 
+export interface CreateLlmServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly engine?: string | null;
+	readonly modelName: string;
+	readonly modelVersion?: string | null;
+	readonly contextWindowTokens?: number | null;
+	readonly maxOutputTokens?: number | null;
+	readonly temperatureMin?: number | null;
+	readonly temperatureMax?: number | null;
+	readonly supportsStreaming?: boolean | null;
+	readonly supportsTools?: boolean | null;
+	readonly maxBatchSize?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateLlmServiceInput = Partial<
+	Omit<CreateLlmServiceInput, "uid">
+>;
+
 /* ------------------------------------------------------------------ */
 /* Chat (workspace-scoped, backed by the agentic tables)              */
 /* ------------------------------------------------------------------ */
@@ -259,6 +284,7 @@ export interface CreateAgentInput {
 	readonly systemPrompt?: string | null;
 	readonly userPrompt?: string | null;
 	readonly knowledgeBaseIds?: readonly string[];
+	readonly llmServiceId?: string | null;
 	readonly ragEnabled?: boolean;
 	readonly ragMaxResults?: number | null;
 	readonly ragMinScore?: number | null;
@@ -526,6 +552,30 @@ export interface ControlPlaneStore {
 		patch: UpdateRerankingServiceInput,
 	): Promise<RerankingServiceRecord>;
 	deleteRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* LLM services. Workspace-scoped definitions of how to call a
+	 * chat/generation model. Multiple agents in the same workspace may
+	 * reference one by id via `agent.llmServiceId`. Deleting a service
+	 * that an agent points at is rejected with 409 (matches the
+	 * embedding/chunking pattern). */
+	listLlmServices(workspace: string): Promise<readonly LlmServiceRecord[]>;
+	getLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<LlmServiceRecord | null>;
+	createLlmService(
+		workspace: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord>;
+	updateLlmService(
+		workspace: string,
+		uid: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord>;
+	deleteLlmService(
 		workspace: string,
 		uid: string,
 	): Promise<{ deleted: boolean }>;

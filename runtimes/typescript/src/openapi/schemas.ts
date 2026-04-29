@@ -762,6 +762,74 @@ export const UpdateRerankingServiceInputSchema =
 		.omit({ rerankingServiceId: true })
 		.openapi("UpdateRerankingServiceInput");
 
+/* ---------- LLM service ---------- */
+
+export const LlmServiceRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		llmServiceId: z.string().uuid(),
+		name: z.string(),
+		description: z.string().nullable(),
+		status: ServiceStatusSchema,
+		provider: z.string(),
+		engine: z.string().nullable(),
+		modelName: z.string(),
+		modelVersion: z.string().nullable(),
+		contextWindowTokens: z.number().int().nullable(),
+		maxOutputTokens: z.number().int().nullable(),
+		temperatureMin: z.number().nullable(),
+		temperatureMax: z.number().nullable(),
+		supportsStreaming: z.boolean().nullable(),
+		supportsTools: z.boolean().nullable(),
+		endpointBaseUrl: z.string().nullable(),
+		endpointPath: z.string().nullable(),
+		requestTimeoutMs: z.number().int().nullable(),
+		maxBatchSize: z.number().int().nullable(),
+		authType: AuthTypeSchema,
+		credentialRef: z.string().nullable(),
+		supportedLanguages: z.array(z.string()),
+		supportedContent: z.array(z.string()),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
+	})
+	.openapi("LlmService");
+
+export const LlmServicePageSchema = pageSchema(
+	"LlmServicePage",
+	LlmServiceRecordSchema,
+);
+
+export const CreateLlmServiceInputSchema = z
+	.object({
+		llmServiceId: z.string().uuid().optional(),
+		name: z.string().min(1),
+		description: z.string().nullable().optional(),
+		status: ServiceStatusSchema.optional(),
+		provider: z.string().min(1),
+		engine: z.string().nullable().optional(),
+		modelName: z.string().min(1),
+		modelVersion: z.string().nullable().optional(),
+		contextWindowTokens: z.number().int().positive().nullable().optional(),
+		maxOutputTokens: z.number().int().positive().nullable().optional(),
+		temperatureMin: z.number().nullable().optional(),
+		temperatureMax: z.number().nullable().optional(),
+		supportsStreaming: z.boolean().nullable().optional(),
+		supportsTools: z.boolean().nullable().optional(),
+		endpointBaseUrl: z.string().nullable().optional(),
+		endpointPath: z.string().nullable().optional(),
+		requestTimeoutMs: z.number().int().positive().nullable().optional(),
+		maxBatchSize: z.number().int().positive().nullable().optional(),
+		authType: AuthTypeSchema.optional(),
+		credentialRef: z.string().nullable().optional(),
+		supportedLanguages: z.array(z.string()).optional(),
+		supportedContent: z.array(z.string()).optional(),
+	})
+	.openapi("CreateLlmServiceInput");
+
+export const UpdateLlmServiceInputSchema = CreateLlmServiceInputSchema.partial()
+	.omit({ llmServiceId: true })
+	.openapi("UpdateLlmServiceInput");
+
 /* ---------- URL params ---------- */
 
 export const KnowledgeBaseIdParamSchema = z
@@ -927,6 +995,7 @@ export const AgentRecordSchema = z
 		description: z.string().nullable(),
 		systemPrompt: z.string().nullable(),
 		userPrompt: z.string().nullable(),
+		llmServiceId: z.string().uuid().nullable(),
 		knowledgeBaseIds: z.array(z.string().uuid()),
 		ragEnabled: z.boolean(),
 		ragMaxResults: z.number().int().nullable(),
@@ -948,6 +1017,7 @@ export const CreateAgentInputSchema = z
 		description: z.string().nullable().optional(),
 		systemPrompt: z.string().nullable().optional(),
 		userPrompt: z.string().nullable().optional(),
+		llmServiceId: z.string().uuid().nullable().optional(),
 		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
 		ragEnabled: z.boolean().optional(),
 		ragMaxResults: z.number().int().positive().nullable().optional(),
@@ -964,6 +1034,7 @@ export const UpdateAgentInputSchema = z
 		description: z.string().nullable().optional(),
 		systemPrompt: z.string().nullable().optional(),
 		userPrompt: z.string().nullable().optional(),
+		llmServiceId: z.string().uuid().nullable().optional(),
 		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
 		ragEnabled: z.boolean().optional(),
 		ragMaxResults: z.number().int().positive().nullable().optional(),
@@ -1027,6 +1098,14 @@ export const RerankingServiceIdParamSchema = z
 	.uuid()
 	.openapi({
 		param: { name: "rerankingServiceId", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
+export const LlmServiceIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "llmServiceId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 

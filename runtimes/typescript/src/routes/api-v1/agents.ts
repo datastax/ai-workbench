@@ -49,6 +49,7 @@ interface AgentWire {
 	description: string | null;
 	systemPrompt: string | null;
 	userPrompt: string | null;
+	llmServiceId: string | null;
 	knowledgeBaseIds: string[];
 	ragEnabled: boolean;
 	ragMaxResults: number | null;
@@ -77,6 +78,7 @@ function toAgentWire(record: AgentRecord): AgentWire {
 		description: record.description,
 		systemPrompt: record.systemPrompt,
 		userPrompt: record.userPrompt,
+		llmServiceId: record.llmServiceId,
 		knowledgeBaseIds: [...record.knowledgeBaseIds],
 		ragEnabled: record.ragEnabled,
 		ragMaxResults: record.ragMaxResults,

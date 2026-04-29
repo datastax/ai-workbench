@@ -43,6 +43,7 @@ import type {
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
+	CreateLlmServiceInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -55,6 +56,7 @@ import type {
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
+	UpdateLlmServiceInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -67,6 +69,7 @@ import type {
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
+	LlmServiceRecord,
 	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -169,6 +172,7 @@ function buildAgentRecord(
 		systemPrompt: input.systemPrompt ?? null,
 		userPrompt: input.userPrompt ?? null,
 		toolIds: freezeStringSet([]),
+		llmServiceId: input.llmServiceId ?? null,
 		ragEnabled: input.ragEnabled ?? false,
 		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
 		ragMaxResults: input.ragMaxResults ?? null,
@@ -229,6 +233,10 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private readonly rerankingServices = new Map<
 		string,
 		Map<string, RerankingServiceRecord>
+	>();
+	private readonly llmServices = new Map<
+		string,
+		Map<string, LlmServiceRecord>
 	>();
 	// Chat (workspace-scoped, agentic-tables-backed). Stage-2 schema:
 	// agents partitioned by workspace; conversations by (workspace,
@@ -311,6 +319,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		this.chunkingServices.delete(uid);
 		this.embeddingServices.delete(uid);
 		this.rerankingServices.delete(uid);
+		this.llmServices.delete(uid);
 		for (const key of Array.from(this.ragDocuments.keys())) {
 			if (key.startsWith(`${uid}:`)) this.ragDocuments.delete(key);
 		}
@@ -1126,8 +1135,151 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
 		this.assertServiceNotReferenced(workspace, "rerankingServiceId", uid);
+		this.assertAgentServiceNotReferenced(workspace, "rerankingServiceId", uid);
 		return {
 			deleted: this.rerankingServices.get(workspace)?.delete(uid) ?? false,
+		};
+	}
+
+	/* ---------------- LLM services ---------------- */
+
+	async listLlmServices(
+		workspace: string,
+	): Promise<readonly LlmServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.llmServices.get(workspace)?.values() ?? []);
+	}
+
+	async getLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<LlmServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.llmServices.get(workspace)?.get(uid) ?? null;
+	}
+
+	async createLlmService(
+		workspace: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.llmServices.get(workspace) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: LlmServiceRecord = {
+			workspaceId: workspace,
+			llmServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			engine: input.engine ?? null,
+			modelName: input.modelName,
+			modelVersion: input.modelVersion ?? null,
+			contextWindowTokens: input.contextWindowTokens ?? null,
+			maxOutputTokens: input.maxOutputTokens ?? null,
+			temperatureMin: input.temperatureMin ?? null,
+			temperatureMax: input.temperatureMax ?? null,
+			supportsStreaming: input.supportsStreaming ?? null,
+			supportsTools: input.supportsTools ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.llmServices.set(workspace, bucket);
+		return record;
+	}
+
+	async updateLlmService(
+		workspace: string,
+		uid: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = this.llmServices.get(workspace)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("llm service", uid);
+		}
+		const next: LlmServiceRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.provider !== undefined && { provider: patch.provider }),
+			...(patch.engine !== undefined && { engine: patch.engine }),
+			...(patch.modelName !== undefined && { modelName: patch.modelName }),
+			...(patch.modelVersion !== undefined && {
+				modelVersion: patch.modelVersion,
+			}),
+			...(patch.contextWindowTokens !== undefined && {
+				contextWindowTokens: patch.contextWindowTokens,
+			}),
+			...(patch.maxOutputTokens !== undefined && {
+				maxOutputTokens: patch.maxOutputTokens,
+			}),
+			...(patch.temperatureMin !== undefined && {
+				temperatureMin: patch.temperatureMin,
+			}),
+			...(patch.temperatureMax !== undefined && {
+				temperatureMax: patch.temperatureMax,
+			}),
+			...(patch.supportsStreaming !== undefined && {
+				supportsStreaming: patch.supportsStreaming,
+			}),
+			...(patch.supportsTools !== undefined && {
+				supportsTools: patch.supportsTools,
+			}),
+			...(patch.endpointBaseUrl !== undefined && {
+				endpointBaseUrl: patch.endpointBaseUrl,
+			}),
+			...(patch.endpointPath !== undefined && {
+				endpointPath: patch.endpointPath,
+			}),
+			...(patch.requestTimeoutMs !== undefined && {
+				requestTimeoutMs: patch.requestTimeoutMs,
+			}),
+			...(patch.maxBatchSize !== undefined && {
+				maxBatchSize: patch.maxBatchSize,
+			}),
+			...(patch.authType !== undefined && { authType: patch.authType }),
+			...(patch.credentialRef !== undefined && {
+				credentialRef: patch.credentialRef,
+			}),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		this.llmServices.get(workspace)?.set(uid, next);
+		return next;
+	}
+
+	async deleteLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		this.assertAgentServiceNotReferenced(workspace, "llmServiceId", uid);
+		return {
+			deleted: this.llmServices.get(workspace)?.delete(uid) ?? false,
 		};
 	}
 
@@ -1153,6 +1305,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		input: CreateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (input.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, input.llmServiceId);
+		}
+		if (input.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, input.rerankingServiceId);
+		}
 		const agentId = input.agentId ?? randomUUID();
 		const byAgent = this.agents.get(workspaceId) ?? new Map();
 		if (byAgent.has(agentId)) {
@@ -1172,6 +1330,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateAgentInput,
 	): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
+		if (patch.llmServiceId != null) {
+			await this.assertLlmService(workspaceId, patch.llmServiceId);
+		}
+		if (patch.rerankingServiceId != null) {
+			await this.assertRerankingService(workspaceId, patch.rerankingServiceId);
+		}
 		const byAgent = this.agents.get(workspaceId);
 		const existing = byAgent?.get(agentId);
 		if (!existing) {
@@ -1187,6 +1351,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				systemPrompt: patch.systemPrompt,
 			}),
 			...(patch.userPrompt !== undefined && { userPrompt: patch.userPrompt }),
+			...(patch.llmServiceId !== undefined && {
+				llmServiceId: patch.llmServiceId,
+			}),
 			...(patch.knowledgeBaseIds !== undefined && {
 				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 			}),
@@ -1342,6 +1509,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			systemPrompt: BOBBIE_SYSTEM_PROMPT,
 			userPrompt: null,
 			toolIds: freezeStringSet([]),
+			llmServiceId: null,
 			ragEnabled: true,
 			knowledgeBaseIds: freezeStringSet([]),
 			ragMaxResults: null,
@@ -1573,6 +1741,15 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		}
 	}
 
+	private async assertLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		if (!this.llmServices.get(workspace)?.has(uid)) {
+			throw new ControlPlaneNotFoundError("llm service", uid);
+		}
+	}
+
 	/**
 	 * Refuse to delete a service that any KB still references on the
 	 * given field. Mirrors the pattern used for vector-store deletion.
@@ -1588,6 +1765,21 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
+			);
+		}
+	}
+
+	private assertAgentServiceNotReferenced(
+		workspace: string,
+		field: "llmServiceId" | "rerankingServiceId",
+		serviceUid: string,
+	): void {
+		const ref = Array.from(this.agents.get(workspace)?.values() ?? []).find(
+			(agent) => agent[field] === serviceUid,
+		);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`service '${serviceUid}' is referenced by agent '${ref.agentId}' (${field})`,
 			);
 		}
 	}

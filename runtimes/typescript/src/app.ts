@@ -11,7 +11,7 @@
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`             upsert
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{id}`        delete record
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank
- *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services`  service CRUD
+ *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking,llm}-services`  service CRUD
  *   `/api/v1/workspaces/{w}/jobs/{jobId}`                             job poll + SSE
  *   `/api/v1/workspaces/{w}/chats`                                    Bobbie chat CRUD
  *   `/api/v1/workspaces/{w}/chats/{chatId}/messages`                  chat message append + history
@@ -58,6 +58,7 @@ import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
 import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "./routes/api-v1/knowledge-filters.js";
+import { llmServiceRoutes } from "./routes/api-v1/llm-services.js";
 import { mountMcpRoutes } from "./routes/api-v1/mcp.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
@@ -340,6 +341,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
+	app.route("/api/v1/workspaces", llmServiceRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
 		kbDataPlaneRoutes({
