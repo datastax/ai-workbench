@@ -329,7 +329,17 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			chatConfig: opts.chatConfig ?? null,
 		}),
 	);
-	app.route("/api/v1/workspaces", agentRoutes({ store: opts.store }));
+	app.route(
+		"/api/v1/workspaces",
+		agentRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+			secrets: opts.secrets,
+			chatService: opts.chatService ?? null,
+			chatConfig: opts.chatConfig ?? null,
+		}),
+	);
 	mountMcpRoutes(app, {
 		store: opts.store,
 		drivers: opts.drivers,

@@ -75,6 +75,20 @@ export const BOBBIE_SYSTEM_PROMPT =
 	"context, say so honestly rather than inventing it.";
 
 /**
+ * Generic fallback system prompt used by user-defined agents that
+ * don't supply their own `systemPrompt`. Picked up by the agent
+ * dispatcher only when both `agent.systemPrompt` and
+ * `chatConfig.systemPrompt` are null. Deliberately persona-agnostic
+ * — Bobbie's prompt is reserved for the singleton Bobbie agent and
+ * any reference here would leak that legacy naming into user agents.
+ */
+export const DEFAULT_AGENT_SYSTEM_PROMPT =
+	"You are a helpful assistant grounded in the provided knowledge base " +
+	"context. When you draw on a context passage, cite it inline as " +
+	"`[chunk-uuid]`. If the context does not support an answer, decline " +
+	"rather than inventing one.";
+
+/**
  * Deterministic agent_id for the singleton Bobbie agent in a given
  * workspace. Same workspace always yields the same id, so concurrent
  * first-use callers converge on a single row instead of racing to
