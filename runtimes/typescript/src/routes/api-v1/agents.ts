@@ -1,18 +1,12 @@
 /**
  * `/api/v1/workspaces/{workspaceId}/agents` — workspace-scoped agents.
  *
- * Generalises the Bobbie chat surface: callers can create their own
- * agents (with their own system prompt, KB defaults, reranking
- * preferences) and run conversations against them. The chat surface
- * (`/chats`) stays as a thin Bobbie alias over the same underlying
- * tables; deleting Bobbie via this surface is allowed but the next
- * `ensureBobbieAgent` call (or any `/chats` send) will recreate it.
- *
- * Conversation send-message routes (sync + streaming) live at
- * `.../agents/{a}/conversations/{c}/messages[/stream]` and re-use the
- * shared `chat/agent-dispatch.ts` helper so retrieval, prompt
- * assembly, and persistence stay byte-identical with the legacy
- * /chats surface.
+ * Callers create their own agents (with their own system prompt, KB
+ * defaults, reranking preferences) and run conversations against
+ * them. Conversation send-message routes (sync + streaming) live at
+ * `.../agents/{a}/conversations/{c}/messages[/stream]` and use the
+ * shared `chat/agent-dispatch.ts` helper for retrieval, prompt
+ * assembly, and persistence.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -43,7 +37,6 @@ import {
 	AgentPageSchema,
 	AgentRecordSchema,
 	ChatMessagePageSchema,
-	ChatMessageRecordSchema,
 	ConversationIdParamSchema,
 	ConversationPageSchema,
 	ConversationRecordSchema,
@@ -133,8 +126,8 @@ interface ChatMessageWire {
 /**
  * Project a {@link MessageRecord} onto the `ChatMessage` wire shape.
  * Internal `tool` rows are not yet surfaced over the agent message
- * routes (no tools wired); they collapse to `agent` for forward-compat
- * the same way the /chats route does.
+ * routes (no tools wired); they collapse to `agent` for
+ * forward-compat.
  */
 function toChatMessageWire(record: MessageRecord): ChatMessageWire {
 	const role: "user" | "agent" | "system" =
@@ -666,8 +659,8 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				throw new ControlPlaneNotFoundError("conversation", conversationId);
 			}
 			// Without an executor (no global chatService AND no per-agent
-			// llmServiceId) we cannot generate a reply. 503 mirrors the
-			// /chats route's `chat_disabled` semantics.
+			// llmServiceId) we cannot generate a reply. 503 with a
+			// `chat_disabled` envelope advertises why.
 			if (!chatService && !resolved.agent.llmServiceId) {
 				throw new ApiError(
 					"chat_disabled",
@@ -703,10 +696,10 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		},
 	);
 
-	// SSE streaming variant of POST /messages. Mirrors the /chats
-	// streaming surface: emits the canonical persisted user turn first,
-	// then a `token` event per delta, then a single terminal `done` (or
-	// `error`) carrying the persisted assistant row.
+	// SSE streaming variant of POST /messages. Emits the canonical
+	// persisted user turn first, then a `token` event per delta, then
+	// a single terminal `done` (or `error`) carrying the persisted
+	// assistant row.
 	app.post(
 		"/:workspaceId/agents/:agentId/conversations/:conversationId/messages/stream",
 		async (c) => {

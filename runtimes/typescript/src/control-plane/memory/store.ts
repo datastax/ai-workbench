@@ -16,9 +16,6 @@
 
 import { randomUUID } from "node:crypto";
 import {
-	BOBBIE_AGENT_NAME,
-	BOBBIE_SYSTEM_PROMPT,
-	bobbieAgentId,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
@@ -37,7 +34,6 @@ import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
 	CreateAgentInput,
-	CreateChatInput,
 	CreateChunkingServiceInput,
 	CreateConversationInput,
 	CreateEmbeddingServiceInput,
@@ -49,7 +45,6 @@ import type {
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateAgentInput,
-	UpdateChatInput,
 	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
 	UpdateConversationInput,
@@ -141,7 +136,7 @@ function byMessageTsAsc<
 
 /**
  * Oldest-first sort for agent rows. Agent listing uses creation order
- * so Bobbie (the earliest agent) sits at the top of the list.
+ * so the first-created agent sits at the top of the list.
  */
 function byCreatedAtAscAgent<
 	T extends { readonly createdAt: string; readonly agentId: string },
@@ -238,10 +233,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		string,
 		Map<string, LlmServiceRecord>
 	>();
-	// Chat (workspace-scoped, agentic-tables-backed). Stage-2 schema:
-	// agents partitioned by workspace; conversations by (workspace,
-	// agent); messages by (workspace, conversation). Bobbie is the
-	// only agent the chat surface ever creates.
+	// Agentic tables (Stage-2 schema). Agents partitioned by
+	// workspace; conversations by (workspace, agent); messages by
+	// (workspace, conversation).
 	private readonly agents = new Map<string, Map<string, AgentRecord>>();
 	private readonly conversations = new Map<
 		string,
@@ -1492,111 +1486,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		return { deleted };
 	}
 
-	/* ---------------- Chat (Bobbie alias) ---------------- */
-
-	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const byAgent = this.agents.get(workspaceId) ?? new Map();
-		const existing = byAgent.get(agentId);
-		if (existing) return existing;
-		const now = nowIso();
-		const record: AgentRecord = {
-			workspaceId,
-			agentId,
-			name: BOBBIE_AGENT_NAME,
-			description: null,
-			systemPrompt: BOBBIE_SYSTEM_PROMPT,
-			userPrompt: null,
-			toolIds: freezeStringSet([]),
-			llmServiceId: null,
-			ragEnabled: true,
-			knowledgeBaseIds: freezeStringSet([]),
-			ragMaxResults: null,
-			ragMinScore: null,
-			rerankEnabled: false,
-			rerankingServiceId: null,
-			rerankMaxResults: null,
-			createdAt: now,
-			updatedAt: now,
-		};
-		byAgent.set(agentId, record);
-		this.agents.set(workspaceId, byAgent);
-		return record;
-	}
-
-	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
-		return this.listConversations(workspaceId, bobbieAgentId(workspaceId));
-	}
-
-	async getChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<ConversationRecord | null> {
-		return this.getConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
-
-	async createChat(
-		workspaceId: string,
-		input: CreateChatInput,
-	): Promise<ConversationRecord> {
-		await this.ensureBobbieAgent(workspaceId);
-		try {
-			return await this.createConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				{
-					conversationId: input.chatId,
-					title: input.title,
-					knowledgeBaseIds: input.knowledgeBaseIds,
-				},
-			);
-		} catch (err) {
-			// Rewrite the conversation-flavored error so existing chat
-			// callers still see "chat" in the message.
-			if (err instanceof ControlPlaneConflictError) {
-				throw new ControlPlaneConflictError(
-					`chat with id '${input.chatId}' already exists`,
-				);
-			}
-			throw err;
-		}
-	}
-
-	async updateChat(
-		workspaceId: string,
-		chatId: string,
-		patch: UpdateChatInput,
-	): Promise<ConversationRecord> {
-		try {
-			return await this.updateConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				chatId,
-				patch,
-			);
-		} catch (err) {
-			if (err instanceof ControlPlaneNotFoundError) {
-				throw new ControlPlaneNotFoundError("chat", chatId);
-			}
-			throw err;
-		}
-	}
-
-	async deleteChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<{ deleted: boolean }> {
-		return this.deleteConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
+	/* ---------------- Chat messages ---------------- */
 
 	async listChatMessages(
 		workspaceId: string,

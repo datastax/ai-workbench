@@ -41,8 +41,7 @@ function makeApp(opts: MakeAppOptions = {}): ReturnType<typeof createApp> {
 		verifiers: [],
 	});
 	const embedders = makeFakeEmbedderFactory();
-	const chatService =
-		opts.chatService === undefined ? null : opts.chatService;
+	const chatService = opts.chatService === undefined ? null : opts.chatService;
 	return createApp({
 		store,
 		drivers,
@@ -107,9 +106,8 @@ describe("agent routes", () => {
 		const list = await app.request(`/api/v1/workspaces/${ws}/agents`);
 		expect(list.status).toBe(200);
 		const lBody = await json(list);
-		// listAgents returns oldest-first; user-created agent comes after Bobbie
-		// only if Bobbie was already ensured. With no chat send yet, Bobbie
-		// hasn't been created, so the list contains just the new agent.
+		// listAgents returns oldest-first; only the user-created agent
+		// exists (workspaces no longer auto-create a singleton agent).
 		expect(lBody.items.length).toBe(1);
 		expect(lBody.items[0].agentId).toBe(created.agentId);
 
@@ -417,18 +415,15 @@ describe("agent conversation message routes", () => {
 		// Create an LLM service with provider="mock" — only "huggingface"
 		// is wired in this runtime today, so the dispatcher should reject
 		// the request before calling any model.
-		const svcRes = await app.request(
-			`/api/v1/workspaces/${ws}/llm-services`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					name: "mock-llm",
-					provider: "mock",
-					modelName: "mock-model",
-				}),
-			},
-		);
+		const svcRes = await app.request(`/api/v1/workspaces/${ws}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "mock-llm",
+				provider: "mock",
+				modelName: "mock-model",
+			}),
+		});
 		expect(svcRes.status, await svcRes.clone().text()).toBe(201);
 		const llmServiceId = (await json(svcRes)).llmServiceId as string;
 

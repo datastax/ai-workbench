@@ -51,9 +51,6 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
-	BOBBIE_AGENT_NAME,
-	BOBBIE_SYSTEM_PROMPT,
-	bobbieAgentId,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
@@ -72,7 +69,6 @@ import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
 	CreateAgentInput,
-	CreateChatInput,
 	CreateChunkingServiceInput,
 	CreateConversationInput,
 	CreateEmbeddingServiceInput,
@@ -84,7 +80,6 @@ import type {
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateAgentInput,
-	UpdateChatInput,
 	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
 	UpdateConversationInput,
@@ -1655,121 +1650,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		return { deleted: true };
 	}
 
-	/* ---------------- Chat (Bobbie alias) ---------------- */
-
-	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const existingRow = await this.tables.agents.findOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-		});
-		if (existingRow) return agentFromRow(existingRow);
-		const now = nowIso();
-		const record: AgentRecord = {
-			workspaceId,
-			agentId,
-			name: BOBBIE_AGENT_NAME,
-			description: null,
-			systemPrompt: BOBBIE_SYSTEM_PROMPT,
-			userPrompt: null,
-			toolIds: Object.freeze([]),
-			llmServiceId: null,
-			ragEnabled: true,
-			knowledgeBaseIds: Object.freeze([]),
-			ragMaxResults: null,
-			ragMinScore: null,
-			rerankEnabled: false,
-			rerankingServiceId: null,
-			rerankMaxResults: null,
-			createdAt: now,
-			updatedAt: now,
-		};
-		try {
-			await this.tables.agents.insertOne(agentToRow(record));
-		} catch (err) {
-			// Concurrent ensure() callers race on the deterministic id.
-			// Re-read; whichever insert won is fine.
-			const raced = await this.tables.agents.findOne({
-				workspace_id: workspaceId,
-				agent_id: agentId,
-			});
-			if (raced) return agentFromRow(raced);
-			throw err;
-		}
-		return record;
-	}
-
-	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
-		return this.listConversations(workspaceId, bobbieAgentId(workspaceId));
-	}
-
-	async getChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<ConversationRecord | null> {
-		return this.getConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
-
-	async createChat(
-		workspaceId: string,
-		input: CreateChatInput,
-	): Promise<ConversationRecord> {
-		await this.ensureBobbieAgent(workspaceId);
-		try {
-			return await this.createConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				{
-					conversationId: input.chatId,
-					title: input.title,
-					knowledgeBaseIds: input.knowledgeBaseIds,
-				},
-			);
-		} catch (err) {
-			if (err instanceof ControlPlaneConflictError) {
-				throw new ControlPlaneConflictError(
-					`chat with id '${input.chatId}' already exists`,
-				);
-			}
-			throw err;
-		}
-	}
-
-	async updateChat(
-		workspaceId: string,
-		chatId: string,
-		patch: UpdateChatInput,
-	): Promise<ConversationRecord> {
-		try {
-			return await this.updateConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				chatId,
-				patch,
-			);
-		} catch (err) {
-			if (err instanceof ControlPlaneNotFoundError) {
-				throw new ControlPlaneNotFoundError("chat", chatId);
-			}
-			throw err;
-		}
-	}
-
-	async deleteChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<{ deleted: boolean }> {
-		return this.deleteConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
+	/* ---------------- Chat messages ---------------- */
 
 	async listChatMessages(
 		workspaceId: string,

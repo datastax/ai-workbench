@@ -856,14 +856,6 @@ export const ChunkingServiceIdParamSchema = z
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-export const ChatIdParamSchema = z
-	.string()
-	.uuid()
-	.openapi({
-		param: { name: "chatId", in: "path" },
-		example: "11111111-2222-3333-4444-555555555555",
-	});
-
 export const AgentIdParamSchema = z
 	.string()
 	.uuid()
@@ -888,46 +880,12 @@ export const ChatMessageIdParamSchema = z
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-/* ---------- Chat (workspace-scoped) ---------- */
-
-/**
- * Wire-shape for a chat conversation. Backed by the
- * `wb_agentic_conversations_by_agent` table; routes never expose the
- * agent_id since v0 has exactly one agent per workspace (Bobbie) and
- * surfacing it would invite premature agent-management UX.
- */
-export const ChatRecordSchema = z
-	.object({
-		workspaceId: z.string().uuid(),
-		chatId: z.string().uuid(),
-		title: z.string().nullable(),
-		knowledgeBaseIds: z.array(z.string().uuid()),
-		createdAt: DateTimeSchema,
-	})
-	.openapi("Chat");
-
-export const ChatPageSchema = pageSchema("ChatPage", ChatRecordSchema);
-
-export const CreateChatInputSchema = z
-	.object({
-		chatId: z.string().uuid().optional(),
-		title: z.string().min(1).nullable().optional(),
-		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-	})
-	.openapi("CreateChatInput");
-
-export const UpdateChatInputSchema = z
-	.object({
-		title: z.string().min(1).nullable().optional(),
-		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-	})
-	.strict()
-	.openapi("UpdateChatInput");
+/* ---------- Chat messages (agent-conversation-scoped) ---------- */
 
 /**
  * Wire-shape for a chat message. Mirrors `MessageRecord` minus the
- * Stage-2 tool fields that aren't used in the v0 chat surface (Bobbie
- * doesn't have tools yet). RAG provenance lives in `metadata.context_document_ids`
+ * Stage-2 tool fields that aren't used by the v0 surface (no tools
+ * are wired yet). RAG provenance lives in `metadata.context_document_ids`
  * as a comma-separated string for v0; future rev can promote it to
  * a typed array.
  */
@@ -950,9 +908,9 @@ export const ChatMessagePageSchema = pageSchema(
 );
 
 /**
- * Body of `POST .../chats/{chatId}/messages`. The runtime always
- * authors the assistant turn (Bobbie); the only thing the caller
- * supplies is the user-typed content.
+ * Body of `POST .../conversations/{c}/messages`. The runtime always
+ * authors the assistant turn from the configured model; the only
+ * thing the caller supplies is the user-typed content.
  */
 export const SendChatMessageInputSchema = z
 	.object({
@@ -961,10 +919,10 @@ export const SendChatMessageInputSchema = z
 	.openapi("SendChatMessageInput");
 
 /**
- * Response of `POST .../chats/{chatId}/messages`. Both turns are
+ * Response of `POST .../conversations/{c}/messages`. Both turns are
  * returned so the UI can replace any optimistic user-message stub
- * with the canonical persisted version, and append Bobbie's reply
- * in one render pass. When the model errors, `assistant.metadata`
+ * with the canonical persisted version, and append the assistant
+ * reply in one render pass. When the model errors, `assistant.metadata`
  * contains `finish_reason: "error"` and the body is the human-
  * readable failure message.
  */
@@ -981,11 +939,6 @@ export const SendChatMessageResponseSchema = z
  * Wire-shape for an agent. Mirrors the
  * `wb_agentic_agents_by_workspace` row, minus the `tool_ids` set
  * (no tools are wired in v0; the column stays as future-proofing).
- *
- * The deterministic Bobbie row appears in `listAgents`; clients can
- * recognise it by `name === "Bobbie"` (or by recomputing the
- * deterministic id) and choose to suppress it from "user agents"
- * UIs.
  */
 export const AgentRecordSchema = z
 	.object({
@@ -1049,9 +1002,8 @@ export const UpdateAgentInputSchema = z
 /* ---------- Conversations (agent-scoped) ---------- */
 
 /**
- * Wire-shape for an agent-scoped conversation. The `/chats` surface
- * uses {@link ChatRecordSchema} (which hides agent_id); the agents
- * surface includes it because callers picked the agent themselves.
+ * Wire-shape for an agent-scoped conversation. Backed by the
+ * `wb_agentic_conversations_by_agent` table.
  */
 export const ConversationRecordSchema = z
 	.object({

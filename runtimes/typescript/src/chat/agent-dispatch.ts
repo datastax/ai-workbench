@@ -1,15 +1,13 @@
 /**
  * Shared dispatcher for the per-agent chat send/stream pipeline.
  *
- * Generalises the Bobbie-specific send/stream code that lives in
- * `routes/api-v1/chats.ts` so user-defined agents can be invoked over
- * `/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages` with
+ * Backs `/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`
+ * for both the synchronous send and the SSE stream variants, providing
  * the same RAG retrieval + prompt-assembly + persistence shape.
  *
  * Resolution order for the per-turn effective values:
  *   - **System prompt**: `agent.systemPrompt` ?? `chatConfig.systemPrompt`
- *     ?? `DEFAULT_AGENT_SYSTEM_PROMPT`. (Bobbie's persona is only the
- *     fallback for `/chats` — handled in chats.ts, not here.)
+ *     ?? `DEFAULT_AGENT_SYSTEM_PROMPT`.
  *   - **KB scope**: `conversation.knowledgeBaseIds` if non-empty, else
  *     `agent.knowledgeBaseIds` if non-empty, else `[]` (the retrieval
  *     layer interprets `[]` as "all KBs in the workspace").
@@ -26,16 +24,14 @@
  * per-turn accurate even when an agent overrides the model.
  */
 
-import { assemblePrompt } from "../chat/prompt.js";
-import { retrieveContext } from "../chat/retrieval.js";
 import {
 	HuggingFaceChatService,
 	type HuggingFaceChatServiceOptions,
 } from "../chat/huggingface.js";
-import type {
-	ChatService,
-	ChatStreamEvent,
-} from "../chat/types.js";
+import type { RetrievedChunk } from "../chat/prompt.js";
+import { assemblePrompt } from "../chat/prompt.js";
+import { retrieveContext } from "../chat/retrieval.js";
+import type { ChatService, ChatStreamEvent } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
@@ -51,7 +47,6 @@ import type { EmbedderFactory } from "../embeddings/factory.js";
 import { ApiError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { SecretResolver } from "../secrets/provider.js";
-import type { RetrievedChunk } from "../chat/prompt.js";
 
 const DEFAULT_RETRIEVAL_K = 6;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
@@ -118,9 +113,11 @@ async function resolveAgentChat(
 	});
 
 	// System-prompt resolution: agent override > runtime config override
-	// > generic default. Bobbie-specific fallback stays inside chats.ts.
+	// > generic default.
 	const systemPrompt =
-		agent.systemPrompt ?? chatConfig?.systemPrompt ?? DEFAULT_AGENT_SYSTEM_PROMPT;
+		agent.systemPrompt ??
+		chatConfig?.systemPrompt ??
+		DEFAULT_AGENT_SYSTEM_PROMPT;
 
 	const retrievalK =
 		agent.ragMaxResults ?? chatConfig?.retrievalK ?? DEFAULT_RETRIEVAL_K;
@@ -204,10 +201,11 @@ async function resolveChatService(
 /* ------------------------------------------------------------------ */
 
 /**
- * Compose the assistant message's `metadata` map. Mirrors the
- * `buildMetadata` helper inside `routes/api-v1/chats.ts` so the
- * UI's `MarkdownContent.tsx` citation parser sees identical
- * `context_chunks` JSON across both routes.
+ * Compose the assistant message's `metadata` map. The web UI's
+ * `MarkdownContent.tsx` citation parser depends on the
+ * `context_chunks` shape — a JSON-encoded array of
+ * `[chunkId, knowledgeBaseId, documentId]` tuples — and the
+ * `context_document_ids` comma-joined fallback for older clients.
  */
 export function buildAgentMetadata(
 	chunks: readonly {
@@ -321,8 +319,7 @@ export async function dispatchAgentSend(
 			messageTs: assistantTs,
 			content:
 				completion.finishReason === "error"
-					? (completion.errorMessage ??
-						"the agent couldn't answer this turn.")
+					? (completion.errorMessage ?? "the agent couldn't answer this turn.")
 					: completion.content,
 			tokenCount: completion.tokenCount,
 			metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {

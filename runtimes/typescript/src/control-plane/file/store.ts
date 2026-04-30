@@ -26,9 +26,6 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	BOBBIE_AGENT_NAME,
-	BOBBIE_SYSTEM_PROMPT,
-	bobbieAgentId,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
@@ -47,7 +44,6 @@ import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
 	CreateAgentInput,
-	CreateChatInput,
 	CreateChunkingServiceInput,
 	CreateConversationInput,
 	CreateEmbeddingServiceInput,
@@ -59,7 +55,6 @@ import type {
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateAgentInput,
-	UpdateChatInput,
 	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
 	UpdateConversationInput,
@@ -98,7 +93,7 @@ type Table =
 	| "reranking-services"
 	| "llm-services"
 	| "rag-documents"
-	// Chat (workspace-scoped, agentic-tables-backed).
+	// Agentic tables (Stage-2 schema).
 	| "agents"
 	| "conversations"
 	| "messages";
@@ -141,8 +136,9 @@ function byCreatedAtDescConv(
 }
 
 /**
- * Oldest-first sort for agent rows. Bobbie (always the earliest agent
- * in a workspace) sits at the top. Tie-break by agent_id for stability.
+ * Oldest-first sort for agent rows. Agent listing uses creation order
+ * so the first-created agent sits at the top. Tie-break by agent_id
+ * for stability.
  */
 function byCreatedAtAscAgent(a: AgentRecord, b: AgentRecord): number {
 	if (a.createdAt < b.createdAt) return -1;
@@ -1286,9 +1282,8 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		await this.assertWorkspace(workspace);
 		const all = await this.readAll<LlmServiceRecord>("llm-services");
 		return (
-			all.find(
-				(s) => s.workspaceId === workspace && s.llmServiceId === uid,
-			) ?? null
+			all.find((s) => s.workspaceId === workspace && s.llmServiceId === uid) ??
+			null
 		);
 	}
 
@@ -1706,112 +1701,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		return res;
 	}
 
-	/* ---------------- Chat (Bobbie alias) ---------------- */
-
-	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		return this.mutate<"agents", AgentRecord>("agents", (rows) => {
-			const existing = rows.find(
-				(a) => a.workspaceId === workspaceId && a.agentId === agentId,
-			);
-			if (existing) return { rows: [...rows], result: existing };
-			const now = nowIso();
-			const record: AgentRecord = {
-				workspaceId,
-				agentId,
-				name: BOBBIE_AGENT_NAME,
-				description: null,
-				systemPrompt: BOBBIE_SYSTEM_PROMPT,
-				userPrompt: null,
-				toolIds: Object.freeze([]),
-				llmServiceId: null,
-				ragEnabled: true,
-				knowledgeBaseIds: Object.freeze([]),
-				ragMaxResults: null,
-				ragMinScore: null,
-				rerankEnabled: false,
-				rerankingServiceId: null,
-				rerankMaxResults: null,
-				createdAt: now,
-				updatedAt: now,
-			};
-			return { rows: [...rows, record], result: record };
-		});
-	}
-
-	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
-		return this.listConversations(workspaceId, bobbieAgentId(workspaceId));
-	}
-
-	async getChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<ConversationRecord | null> {
-		return this.getConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
-
-	async createChat(
-		workspaceId: string,
-		input: CreateChatInput,
-	): Promise<ConversationRecord> {
-		await this.ensureBobbieAgent(workspaceId);
-		try {
-			return await this.createConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				{
-					conversationId: input.chatId,
-					title: input.title,
-					knowledgeBaseIds: input.knowledgeBaseIds,
-				},
-			);
-		} catch (err) {
-			// Rewrite the conversation-flavored conflict so existing
-			// chat callers continue to see "chat" in the message.
-			if (err instanceof ControlPlaneConflictError) {
-				throw new ControlPlaneConflictError(
-					`chat with id '${input.chatId}' already exists`,
-				);
-			}
-			throw err;
-		}
-	}
-
-	async updateChat(
-		workspaceId: string,
-		chatId: string,
-		patch: UpdateChatInput,
-	): Promise<ConversationRecord> {
-		try {
-			return await this.updateConversation(
-				workspaceId,
-				bobbieAgentId(workspaceId),
-				chatId,
-				patch,
-			);
-		} catch (err) {
-			if (err instanceof ControlPlaneNotFoundError) {
-				throw new ControlPlaneNotFoundError("chat", chatId);
-			}
-			throw err;
-		}
-	}
-
-	async deleteChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<{ deleted: boolean }> {
-		return this.deleteConversation(
-			workspaceId,
-			bobbieAgentId(workspaceId),
-			chatId,
-		);
-	}
+	/* ---------------- Chat messages ---------------- */
 
 	async listChatMessages(
 		workspaceId: string,
@@ -2048,8 +1938,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	): Promise<void> {
 		const agents = await this.readAll<AgentRecord>("agents");
 		const ref = agents.find(
-			(agent) =>
-				agent.workspaceId === workspace && agent[field] === serviceUid,
+			(agent) => agent.workspaceId === workspace && agent[field] === serviceUid,
 		);
 		if (ref) {
 			throw new ControlPlaneConflictError(
