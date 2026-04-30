@@ -111,6 +111,64 @@ describe("list_kbs", () => {
 			.sort();
 		expect(names).toEqual(["alpha", "beta"]);
 	});
+
+	test("rejects unknown args fields", async () => {
+		const f = await fixture();
+		const out = await resolveTool("list_kbs")?.execute(
+			{ unexpected: "field" },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:/);
+	});
+});
+
+describe("list_documents", () => {
+	test("returns 'no knowledge bases' when the workspace has none", async () => {
+		const f = await fixture();
+		const out = await resolveTool("list_documents")?.execute({}, f.deps);
+		expect(out).toMatch(/no knowledge bases/i);
+	});
+
+	test("returns 'no documents' when KBs exist but are empty", async () => {
+		const f = await fixture();
+		await seedKb(f.store, f.workspaceId, "alpha");
+		const out = await resolveTool("list_documents")?.execute({}, f.deps);
+		expect(out).toMatch(/no documents/i);
+	});
+
+	test("scopes to one KB and shapes the document rows", async () => {
+		const f = await fixture();
+		const kb1 = await seedKb(f.store, f.workspaceId, "alpha");
+		const kb2 = await seedKb(f.store, f.workspaceId, "beta");
+		await f.store.createRagDocument(f.workspaceId, kb1, {
+			sourceFilename: "a.txt",
+			fileType: "text/plain",
+		});
+		await f.store.createRagDocument(f.workspaceId, kb2, {
+			sourceFilename: "b.txt",
+		});
+
+		const out = await resolveTool("list_documents")?.execute(
+			{ knowledgeBaseId: kb1 },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.documents).toHaveLength(1);
+		expect(parsed.documents[0]).toMatchObject({
+			knowledgeBaseId: kb1,
+			sourceFilename: "a.txt",
+			fileType: "text/plain",
+		});
+	});
+
+	test("rejects non-uuid knowledgeBaseId", async () => {
+		const f = await fixture();
+		const out = await resolveTool("list_documents")?.execute(
+			{ knowledgeBaseId: "nope" },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:/);
+	});
 });
 
 describe("count_documents", () => {
@@ -141,6 +199,25 @@ describe("count_documents", () => {
 		expect(parsed.total).toBe(3);
 		expect(parsed.perKnowledgeBase).toHaveLength(2);
 	});
+
+	test("scopes to a single knowledgeBaseId when provided", async () => {
+		const f = await fixture();
+		const kb1 = await seedKb(f.store, f.workspaceId, "alpha");
+		await seedKb(f.store, f.workspaceId, "beta");
+		await f.store.createRagDocument(f.workspaceId, kb1, {
+			sourceFilename: "a.txt",
+		});
+
+		const out = await resolveTool("count_documents")?.execute(
+			{ knowledgeBaseId: kb1 },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.total).toBe(1);
+		expect(parsed.perKnowledgeBase).toEqual([
+			{ knowledgeBaseId: kb1, documentCount: 1 },
+		]);
+	});
 });
 
 describe("summarize_kb", () => {
@@ -166,6 +243,109 @@ describe("summarize_kb", () => {
 		const f = await fixture();
 		const out = await resolveTool("summarize_kb")?.execute(
 			{ knowledgeBaseId: randomUUID() },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:/);
+	});
+
+	test("returns 'no knowledge bases' when the workspace has none", async () => {
+		const f = await fixture();
+		const out = await resolveTool("summarize_kb")?.execute({}, f.deps);
+		expect(out).toMatch(/no knowledge bases/i);
+	});
+
+	test("scopes to a single KB when knowledgeBaseId is provided", async () => {
+		const f = await fixture();
+		const kb1 = await seedKb(f.store, f.workspaceId, "alpha");
+		await seedKb(f.store, f.workspaceId, "beta");
+		await f.store.createRagDocument(f.workspaceId, kb1, {
+			sourceFilename: "x.txt",
+		});
+
+		const out = await resolveTool("summarize_kb")?.execute(
+			{ knowledgeBaseId: kb1 },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.summaries).toHaveLength(1);
+		expect(parsed.summaries[0]).toMatchObject({
+			knowledgeBaseId: kb1,
+			name: "alpha",
+			documentCount: 1,
+		});
+	});
+});
+
+describe("get_document", () => {
+	test("rejects missing required args", async () => {
+		const f = await fixture();
+		const out = await resolveTool("get_document")?.execute({}, f.deps);
+		expect(out).toMatch(/^Error:/);
+	});
+
+	test("returns a clean error when the document is unknown", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const out = await resolveTool("get_document")?.execute(
+			{ knowledgeBaseId: kb, documentId: randomUUID() },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:.*not found/);
+	});
+
+	test("returns the document metadata when present", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const created = await f.store.createRagDocument(f.workspaceId, kb, {
+			sourceFilename: "spec.md",
+			fileType: "text/markdown",
+			fileSize: 42,
+		});
+		const out = await resolveTool("get_document")?.execute(
+			{ knowledgeBaseId: kb, documentId: created.documentId },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed).toMatchObject({
+			documentId: created.documentId,
+			knowledgeBaseId: kb,
+			sourceFilename: "spec.md",
+			fileType: "text/markdown",
+			fileSize: 42,
+		});
+	});
+});
+
+describe("search_kb", () => {
+	test("returns 'no knowledge bases' when the workspace has none", async () => {
+		const f = await fixture();
+		const out = await resolveTool("search_kb")?.execute(
+			{ query: "anything" },
+			f.deps,
+		);
+		expect(out).toMatch(/no knowledge bases/i);
+	});
+
+	test("returns 'no matching content' when no hits exist", async () => {
+		const f = await fixture();
+		await seedKb(f.store, f.workspaceId, "alpha");
+		const out = await resolveTool("search_kb")?.execute(
+			{ query: "anything" },
+			f.deps,
+		);
+		expect(out).toMatch(/no matching content/i);
+	});
+
+	test("rejects empty query string", async () => {
+		const f = await fixture();
+		const out = await resolveTool("search_kb")?.execute({ query: "" }, f.deps);
+		expect(out).toMatch(/^Error:/);
+	});
+
+	test("rejects limit above the hard cap", async () => {
+		const f = await fixture();
+		const out = await resolveTool("search_kb")?.execute(
+			{ query: "x", limit: 999 },
 			f.deps,
 		);
 		expect(out).toMatch(/^Error:/);
