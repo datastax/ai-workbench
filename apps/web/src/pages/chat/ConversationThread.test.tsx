@@ -78,7 +78,10 @@ vi.mock("sonner", () => ({
 	toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import { ConversationThread, EmptyConversationPane } from "./ConversationThread";
+import {
+	ConversationThread,
+	EmptyConversationPane,
+} from "./ConversationThread";
 
 function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {
@@ -88,7 +91,6 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,
-		toolIds: [],
 		llmServiceId: null,
 		ragEnabled: false,
 		knowledgeBaseIds: [],
@@ -235,9 +237,7 @@ describe("ConversationThread", () => {
 
 	it("shows a StreamingBubble while the SSE reply is in flight", () => {
 		conversationState.data = makeConv();
-		messagesState.data = [
-			makeMessage({ role: "user", content: "ping" }),
-		];
+		messagesState.data = [makeMessage({ role: "user", content: "ping" })];
 		streamState.pending = true;
 		streamState.pendingDelta = "po";
 		renderInRouter(

@@ -42,7 +42,9 @@ vi.mock("sonner", () => ({
 
 import { ConversationSidebar } from "./ConversationSidebar";
 
-function makeConv(overrides: Partial<ConversationRecord> = {}): ConversationRecord {
+function makeConv(
+	overrides: Partial<ConversationRecord> = {},
+): ConversationRecord {
 	return {
 		workspaceId: "00000000-0000-4000-8000-000000000001",
 		agentId: "00000000-0000-4000-8000-000000000002",
@@ -154,9 +156,7 @@ describe("ConversationSidebar", () => {
 				onSelect={onSelect}
 			/>,
 		);
-		await user.click(
-			screen.getByRole("button", { name: /New conversation/ }),
-		);
+		await user.click(screen.getByRole("button", { name: /New conversation/ }));
 		await waitFor(() => {
 			expect(createState.mutateAsync).toHaveBeenCalledWith({
 				title: "New conversation",

@@ -13,11 +13,7 @@ import {
 } from "@/hooks/useConversations";
 import { ApiError, formatApiError } from "@/lib/api";
 import type { AgentRecord, ConversationRecord } from "@/lib/schemas";
-import {
-	EmptyMessages,
-	MessageBubble,
-	StreamingBubble,
-} from "./MessageBubble";
+import { EmptyMessages, MessageBubble, StreamingBubble } from "./MessageBubble";
 
 interface EmptyConversationPaneProps {
 	workspaceId: string;

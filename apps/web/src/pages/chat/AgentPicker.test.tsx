@@ -13,7 +13,6 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,
-		toolIds: [],
 		llmServiceId: null,
 		ragEnabled: false,
 		knowledgeBaseIds: [],

@@ -29,7 +29,6 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,
-		toolIds: [],
 		llmServiceId: null,
 		ragEnabled: false,
 		knowledgeBaseIds: [],
@@ -51,9 +50,7 @@ beforeEach(() => {
 
 describe("CreateFirstAgent", () => {
 	it("renders the empty-state copy and a disabled Create button when name is empty", () => {
-		render(
-			<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />,
-		);
+		render(<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />);
 		expect(screen.getByText("Create your first agent")).toBeInTheDocument();
 		const button = screen.getByRole("button", { name: /Create agent/ });
 		expect(button).toBeDisabled();
@@ -63,7 +60,9 @@ describe("CreateFirstAgent", () => {
 		const user = userEvent.setup();
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />);
 		await user.type(screen.getByLabelText("Name"), "Bobbie");
-		expect(screen.getByRole("button", { name: /Create agent/ })).not.toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: /Create agent/ }),
+		).not.toBeDisabled();
 	});
 
 	it("submits the trimmed name + system prompt and forwards the new agentId", async () => {
@@ -74,10 +73,7 @@ describe("CreateFirstAgent", () => {
 
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={onCreated} />);
 		await user.type(screen.getByLabelText("Name"), "  Bobbie  ");
-		await user.type(
-			screen.getByLabelText(/System prompt/),
-			"  Be helpful  ",
-		);
+		await user.type(screen.getByLabelText(/System prompt/), "  Be helpful  ");
 		await user.click(screen.getByRole("button", { name: /Create agent/ }));
 
 		await waitFor(() => {
@@ -108,8 +104,6 @@ describe("CreateFirstAgent", () => {
 	it("shows the pending button label while the mutation is in flight", () => {
 		createState.isPending = true;
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />);
-		expect(
-			screen.getByRole("button", { name: /Creating…/ }),
-		).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Creating…/ })).toBeDisabled();
 	});
 });

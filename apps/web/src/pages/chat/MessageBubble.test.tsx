@@ -154,9 +154,7 @@ describe("citationHref", () => {
 				knowledgeBaseId: "kb-1",
 				documentId: "doc-1",
 			}),
-		).toBe(
-			"/workspaces/ws-1/knowledge-bases/kb-1?document=doc-1&chunk=c-1",
-		);
+		).toBe("/workspaces/ws-1/knowledge-bases/kb-1?document=doc-1&chunk=c-1");
 	});
 
 	it("omits the document param when documentId is null", () => {
