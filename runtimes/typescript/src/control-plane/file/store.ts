@@ -1880,7 +1880,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	}
 }
 
-
 type TableRow<K extends Table> = K extends "workspaces"
 	? WorkspaceRecord
 	: K extends "api-keys"

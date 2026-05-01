@@ -66,10 +66,7 @@ export function IngestDropZone({
 				className="hidden"
 				// webkitdirectory is the cross-browser folder picker. Not
 				// in stock React HTMLAttributes; cast escape hatch.
-				{...({ webkitdirectory: "", directory: "" } as Record<
-					string,
-					string
-				>)}
+				{...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
 				onChange={(e) => {
 					if (e.target.files) onFiles(e.target.files);
 					e.target.value = "";

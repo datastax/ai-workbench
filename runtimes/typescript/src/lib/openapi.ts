@@ -59,7 +59,9 @@ export function errorResponse<S extends number>(
 	S,
 	{
 		readonly content: {
-			readonly "application/json": { readonly schema: typeof ErrorEnvelopeSchema };
+			readonly "application/json": {
+				readonly schema: typeof ErrorEnvelopeSchema;
+			};
 		};
 		readonly description: string;
 	}
