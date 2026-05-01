@@ -103,14 +103,11 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<div>
-					<p className="text-sm font-medium text-slate-900">Knowledge bases</p>
-					<p className="text-xs text-slate-500 mt-0.5">
-						{rows.length === 0
-							? "No knowledge bases yet — create one to start ingesting documents."
-							: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
-					</p>
-				</div>
+				<p className="text-xs text-slate-500">
+					{rows.length === 0
+						? "No knowledge bases yet — create one to start ingesting documents."
+						: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
+				</p>
 				<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
 					<Plus className="h-4 w-4" /> New knowledge base
 				</Button>
